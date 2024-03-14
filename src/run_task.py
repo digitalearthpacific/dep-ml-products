@@ -202,7 +202,7 @@ def main(
             searcher = PystacSearcher(
                 catalog="https://stac.staging.digitalearthpacific.org",
                 collections=["dep_s1_mosaic", "dep_s2_geomad"],
-                datetime=year
+                datetime=year,
             )
 
             items = searcher.search(area)
@@ -213,16 +213,19 @@ def main(
 
             dem_searcher = PystacSearcher(
                 catalog="https://planetarycomputer.microsoft.com/api/stac/v1",
-                collections=["cop-dem-glo-30"]
+                collections=["cop-dem-glo-30"],
             )
             items_by_collection["cop-dem-glo-30"] = dem_searcher.search(area)
 
             results = {k: len(v) for k, v in items_by_collection.items()}
             log.info(",".join([f"{k}:{v}" for k, v in results.items()]))
 
-            all_data = [loader.load(items, area).squeeze("time") for items in items_by_collection.values()]
+            all_data = [
+                loader.load(items, area).squeeze("time")
+                for items in items_by_collection.values()
+            ]
 
-            data = xr.merge(all_data, compat='override')
+            data = xr.merge(all_data, compat="override")
             data = data.rename({"data": "elevation"})
             data = data.drop_vars(["median_vv", "median_vh", "std_vv", "std_vh"])
 
