@@ -19,7 +19,6 @@ from dep_tools.utils import get_logger
 
 # from dep_tools.task import SimpleLoggingAreaTask
 from dep_tools.writers import AwsDsCogWriter, AzureDsWriter
-from planetary_computer import sign_url
 from typing_extensions import Annotated
 from xarray import DataArray, Dataset
 
@@ -162,7 +161,6 @@ def main(
         groupby="solar_day",
         chunks=dict(time=1, x=xy_chunk_size, y=xy_chunk_size),
         fail_on_error=False,
-        patch_url=sign_url,
         overwrite=overwrite,
     )
 
