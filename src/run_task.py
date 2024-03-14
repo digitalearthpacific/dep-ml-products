@@ -22,6 +22,7 @@ from dep_tools.writers import AwsDsCogWriter, AzureDsWriter
 from typing_extensions import Annotated
 from xarray import DataArray, Dataset
 
+import dask
 import dask.array as da
 import xarray as xr
 from datacube.utils.geometry import assign_crs
@@ -372,6 +373,8 @@ def main(
             client=client,
         )
 
+    dask.config.set({'distributed.worker.daemon': False})
+
     with Client(
         n_workers=n_workers,
         threads_per_worker=threads_per_worker,
@@ -408,11 +411,7 @@ def main(
             data = xr.merge(all_data, compat="override")
             data = data.rename({"data": "elevation"})
 
-            try:
-                data = data.drop_vars(["median_vv", "median_vh", "std_vv", "std_vh"])
-            except ValueError:
-                log.error("Failed to find Sentinel-1 data for this tile")
-                raise typer.Exit()
+            data = data.drop_vars(["median_vv", "median_vh", "std_vv", "std_vh"])            
 
             # Add all the indices to the data
             data = add_indices(data)
@@ -430,6 +429,9 @@ def main(
 
         except EmptyCollectionError:
             log.warning("No data found for this tile.")
+        except ValueError:
+            log.warning("Failed to find Sentinel-1 data for this tile")
+            raise typer.Exit()
         except Exception as e:
             log.exception(f"Failed to process {tile_id} with error: {e}")
             raise typer.Exit(code=1)
