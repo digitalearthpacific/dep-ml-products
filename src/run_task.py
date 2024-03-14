@@ -228,8 +228,6 @@ def main(
             data = data.rename({"data": "elevation"})
             data = data.drop_vars(["median_vv", "median_vh", "std_vv", "std_vh"])
 
-            log.info(f"Found {len(data.time)} timesteps to load")
-
             output_data = processor.process(data)
             log.info(
                 f"Processed data to shape {[output_data.sizes[d] for d in ['x', 'y']]}"
