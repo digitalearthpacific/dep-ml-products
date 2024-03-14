@@ -22,7 +22,7 @@ from dep_tools.writers import AwsDsCogWriter, AzureDsWriter
 from typing_extensions import Annotated
 from xarray import DataArray, Dataset
 
-from utils import predict_xr
+from src.utils import predict_xr
 
 
 def get_tiles() -> gpd.GeoDataFrame:
@@ -226,7 +226,12 @@ def main(
 
             data = xr.merge(all_data, compat="override")
             data = data.rename({"data": "elevation"})
-            data = data.drop_vars(["median_vv", "median_vh", "std_vv", "std_vh"])
+
+            try:
+                data = data.drop_vars(["median_vv", "median_vh", "std_vv", "std_vh"])
+            except ValueError:
+                log.error("Failed to find Sentinel-1 data for this tile")
+                raise typer.Exit()
 
             # Add all the indices to the data
             data = add_indices(data)

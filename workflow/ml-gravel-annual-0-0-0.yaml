@@ -4,7 +4,7 @@ metadata:
   namespace: argo
 spec:
   entrypoint: workflow-entrypoint
-  # serviceAccountName: public-bucket-writer
+  serviceAccountName: argo-workflow-sa
   podGC:
     strategy: OnWorkflowSuccess
     deleteDelayDuration: 600s
@@ -30,9 +30,9 @@ spec:
     - name: image-name
       value: "dep-ml-products"  # The Docker image
     - name: image-tag
-      value: "0.0.0-4-g4d2528a"  # The Docker image and code version
+      value: "0.0.0-10-g7d961c3"  # The Docker image and code version
     - name: memory-limit-per-worker
-      value: "40GB"   # Dask's memory limit per worker.
+      value: "80GB"   # Dask's memory limit per worker.
     - name: model-path
       value: "models/test_model_12032024.dump"
     - name: overwrite
@@ -102,6 +102,17 @@ spec:
         - --limit
         - "{{ inputs.parameters.limit }}"
         - "{{ inputs.parameters.overwrite }}"
+      env:
+        - name: AZURE_STORAGE_ACCOUNT
+          valueFrom:
+            secretKeyRef:
+              name: deppcpublicstorage-output-read-write
+              key: AZURE_STORAGE_ACCOUNT
+        - name: AZURE_STORAGE_SAS_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: deppcpublicstorage-output-read-write
+              key: AZURE_STORAGE_SAS_TOKEN
 
   - name: process
     inputs:
