@@ -347,7 +347,7 @@ def main(
 
     # A processor to process them
     processor = MLProcessor(
-        model_path=model_path, chunk_size=10_000_000, load_data=True
+        model_path=model_path, load_data=True
     )
 
     # And a writer to bind them
