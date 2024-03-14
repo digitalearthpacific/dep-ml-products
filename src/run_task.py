@@ -23,7 +23,7 @@ from planetary_computer import sign_url
 from typing_extensions import Annotated
 from xarray import DataArray, Dataset
 
-from .utils import predict_xr
+from utils import predict_xr
 
 
 def get_tiles() -> gpd.GeoDataFrame:
@@ -117,6 +117,7 @@ def main(
     tile_id: Annotated[str, typer.Option()],
     year: Annotated[str, typer.Option()],
     version: Annotated[str, typer.Option()],
+    model_path: str = "models/test_model_20240312.dump",
     output_bucket: str = None,
     output_resolution: int = 10,
     memory_limit_per_worker: str = "16GB",
@@ -125,14 +126,14 @@ def main(
     xy_chunk_size: int = 4096,
     overwrite: Annotated[bool, typer.Option()] = False,
 ) -> None:
-    base_product = "s1"
+    base_product = "s2s1"
     tiles = get_tiles()
     area = tiles.loc[[tile_id]]
 
-    log = get_logger(tile_id, "Sentinel-1-Mosaic")
+    log = get_logger(tile_id, "Gravel")
     log.info(f"Starting processing version {version} for {year}")
 
-    itempath = get_item_path(base_product, version, year, prefix="dep")
+    itempath = get_item_path(base_product, "mrd", version, year, prefix="dep")
 
     stac_document = itempath.stac_path(tile_id)
 
@@ -166,7 +167,9 @@ def main(
     )
 
     # A processor to process them
-    processor = MLProcessor()
+    processor = MLProcessor(
+        model_path=model_path
+    )
 
     # And a writer to bind them
     if output_bucket is None:

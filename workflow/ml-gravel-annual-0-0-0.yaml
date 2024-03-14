@@ -33,6 +33,8 @@ spec:
       value: "0.0.0"  # The Docker image and code version
     - name: memory-limit-per-worker
       value: "40GB"   # Dask's memory limit per worker.
+    - name: model-path
+      value: "models/test_model_12032024.dump"
     - name: overwrite
       value: "--no-overwrite"  # Can be "--overwrite" or "--no-overwrite"
   templates:
@@ -67,6 +69,8 @@ spec:
               value: "{{ workflow.parameters.version }}"
             - name: memory-limit-per-worker
               value: " {{ workflow.parameters.memory-limit-per-worker }}"
+            - name: model-path
+              value: "{{ workflow.parameters.model-path }}"
             - name: overwrite
               value: "{{ workflow.parameters.overwrite }}"
           withParam: "{{ tasks.generate-ids.outputs.result }}"
@@ -105,6 +109,7 @@ spec:
       - name: tile-id
       - name: year
       - name: version
+      - name: model-path
       - name: memory-limit-per-worker
       - name: overwrite
     container:
@@ -126,6 +131,8 @@ spec:
         - "{{ inputs.parameters.year }}"
         - --version
         - "{{ inputs.parameters.version }}"
+        - --model-path
+        - "{{ inputs.parameters.model-path }}"
         - --memory-limit-per-worker
         - "{{ inputs.parameters.memory-limit-per-worker }}"
         - --n-workers
