@@ -373,7 +373,7 @@ def main(
             client=client,
         )
 
-    dask.config.set({'distributed.worker.daemon': False})
+    dask.config.set({"distributed.worker.daemon": False})
 
     with Client(
         n_workers=n_workers,
@@ -411,7 +411,7 @@ def main(
             data = xr.merge(all_data, compat="override")
             data = data.rename({"data": "elevation"})
 
-            data = data.drop_vars(["median_vv", "median_vh", "std_vv", "std_vh"])            
+            data = data.drop_vars(["median_vv", "median_vh", "std_vv", "std_vh"])
 
             # Add all the indices to the data
             data = add_indices(data)
