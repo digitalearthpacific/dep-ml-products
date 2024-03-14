@@ -30,9 +30,9 @@ spec:
     - name: image-name
       value: "dep-ml-products"  # The Docker image
     - name: image-tag
-      value: "0.0.0-10-g7d961c3"  # The Docker image and code version
+      value: "0.0.0-11-g2bb34e0"  # The Docker image and code version
     - name: memory-limit-per-worker
-      value: "80GB"   # Dask's memory limit per worker.
+      value: "120GB"   # Dask's memory limit per worker.
     - name: model-path
       value: "models/test_model_12032024.dump"
     - name: overwrite
@@ -128,11 +128,11 @@ spec:
       imagePullPolicy: IfNotPresent
       resources:
         requests:
-          memory: 80Gi
+          memory: 100Gi
           cpu: 15
         limits:
           cpu: 15
-          memory: 120Gi
+          memory: 125Gi
       command: [ python ]
       args:
         - src/run_task.py
@@ -151,7 +151,7 @@ spec:
         - --threads-per-worker
         - "64"
         - --xy-chunk-size
-        - "1024"
+        - "4501"
         - "{{ inputs.parameters.overwrite }}"
       env:
         - name: AZURE_STORAGE_ACCOUNT
