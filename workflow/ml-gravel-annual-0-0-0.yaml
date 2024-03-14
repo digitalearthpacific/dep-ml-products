@@ -128,11 +128,11 @@ spec:
       imagePullPolicy: IfNotPresent
       resources:
         requests:
-          memory: 35Gi
-          cpu: 10
+          memory: 80Gi
+          cpu: 15
         limits:
-          cpu: 10
-          memory: 50Gi
+          cpu: 15
+          memory: 120Gi
       command: [ python ]
       args:
         - src/run_task.py
@@ -150,6 +150,8 @@ spec:
         - "1"
         - --threads-per-worker
         - "64"
+        - --xy-chunk-size
+        - "1024"
         - "{{ inputs.parameters.overwrite }}"
       env:
         - name: AZURE_STORAGE_ACCOUNT
