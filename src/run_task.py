@@ -307,7 +307,7 @@ def main(
     xy_chunk_size: int = 4096,
     overwrite: Annotated[bool, typer.Option()] = False,
 ) -> None:
-    base_product = "s1s2"
+    base_product = "s2s1"
     tiles = get_tiles()
     area = tiles.loc[[tile_id]]
 

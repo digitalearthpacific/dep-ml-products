@@ -10,7 +10,7 @@ spec:
     deleteDelayDuration: 600s
   parallelism: 20
   nodeSelector:
-    digitalearthpacific.org/node-size: argo-d32  # 128 GB Mem and 32 Cores
+    digitalearthpacific.org/node-size: argo-d64  # 256 GB Mem and 64 Cores
   tolerations:
   - key: digitalearthpacific.org/node-purpose
     operator: Equal
@@ -26,13 +26,13 @@ spec:
   arguments:
     parameters:
     - name: version
-      value: "0.0.0"  # The version of the data product being made
+      value: "0.0.1"  # The version of the data product being made
     - name: image-name
       value: "dep-ml-products"  # The Docker image
     - name: image-tag
-      value: "0.0.0-15-g6b04efc"  # The Docker image and code version
+      value: "0.0.1"  # The Docker image and code version
     - name: memory-limit-per-worker
-      value: "120GB"   # Dask's memory limit per worker.
+      value: "80GB"   # Dask's memory limit per worker.
     - name: model-path
       value: "models/test_model_12032024.dump"
     - name: overwrite
@@ -128,11 +128,11 @@ spec:
       imagePullPolicy: IfNotPresent
       resources:
         requests:
-          memory: 100Gi
-          cpu: 15
+          memory: 80Gi
+          cpu: 20
         limits:
-          cpu: 15
-          memory: 125Gi
+          cpu: 20
+          memory: 100Gi
       command: [ python ]
       args:
         - src/run_task.py

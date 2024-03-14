@@ -50,6 +50,7 @@ def main(
         for task in tasks:
             itempath = get_item_path("s2s1", "mrd", version, task["year"], prefix="dep")
             stac_path = itempath.stac_path(task["tile-id"])
+            print(f"Looking for {stac_path}")
 
             if output_prefix is not None:
                 stac_path = f"{output_prefix}/{stac_path}"
@@ -59,10 +60,13 @@ def main(
                 exists = object_exists(output_bucket, stac_path)
             else:
                 exists = blob_exists(stac_path)
+
+            print(f"Exists: {exists}")
             if not exists:
                 valid_tasks.append(task)
             if len(valid_tasks) == limit:
                 break
+            print(f"Got tasks: {len(valid_tasks)}")
         # Switch to this list of tasks, which has been filtered
         tasks = valid_tasks
     else:
