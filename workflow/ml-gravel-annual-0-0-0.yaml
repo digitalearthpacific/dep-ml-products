@@ -30,7 +30,7 @@ spec:
     - name: image-name
       value: "dep-ml-products"  # The Docker image
     - name: image-tag
-      value: "0.0.0-11-g2bb34e0"  # The Docker image and code version
+      value: "0.0.0-15-g6b04efc"  # The Docker image and code version
     - name: memory-limit-per-worker
       value: "120GB"   # Dask's memory limit per worker.
     - name: model-path
