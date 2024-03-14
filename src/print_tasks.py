@@ -21,7 +21,8 @@ def main(
 ) -> None:
     tiles = get_tiles()
 
-    region_codes = None if regions.upper() == "ALL" else regions.split(",")
+    if regions is not None:
+        region_codes = None if regions.upper() == "ALL" else regions.split(",")
 
     if limit is not None:
         limit = int(limit)
@@ -34,7 +35,7 @@ def main(
         ValueError(f"{years} is not a valid value for --years")
 
     # Filter by country codes if we have them
-    if region_codes is not None:
+    if regions is not None:
         tiles = tiles.loc[tiles.country_code.isin(region_codes)]
 
     tasks = [
