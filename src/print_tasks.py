@@ -47,7 +47,7 @@ def main(
     if not overwrite:
         valid_tasks = []
         for task in tasks:
-            itempath = get_item_path("s1", version, task["year"], prefix="dep")
+            itempath = get_item_path("s1s2", "mrd", version, task["year"], prefix="dep")
             stac_path = itempath.stac_path(task["tile-id"])
 
             if output_prefix is not None:
