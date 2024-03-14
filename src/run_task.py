@@ -167,9 +167,7 @@ def main(
     )
 
     # A processor to process them
-    processor = MLProcessor(
-        model_path=model_path
-    )
+    processor = MLProcessor(model_path=model_path)
 
     # And a writer to bind them
     if output_bucket is None:
