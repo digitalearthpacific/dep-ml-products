@@ -13,12 +13,6 @@ def predict_xr(
 
     Adapted from https://knowledge.dea.ga.gov.au/notebooks/Tools/gen/dea_tools.classification/#dea_tools.classification.predict_xr
     """
-    # if input_xr isn't dask, coerce it
-    dask = True
-    if not bool(input_xr.chunks):
-        dask = False
-        input_xr = input_xr.chunk({"x": len(input_xr.x), "y": len(input_xr.y)})
-
     # set chunk size if not supplied
     if chunk_size is None:
         chunk_size = int(input_xr.chunks["x"][0]) * int(input_xr.chunks["y"][0])
@@ -28,7 +22,7 @@ def predict_xr(
 
         input_data = []
 
-        variables = list(input_data.data_vars)
+        variables = list(input_xr.data_vars)
         variables.sort()
 
         for var_name in variables:
@@ -87,13 +81,6 @@ def predict_xr(
 
         return assign_crs(output_xr, str(crs))
 
-    if dask is True:
-        # convert model to dask predict
-        model = ParallelPostFit(model)
-        with joblib.parallel_backend("dask"):
-            output_xr = _predict_func(model, input_xr, persist, proba, clean)
-
-    else:
-        output_xr = _predict_func(model, input_xr, persist, proba, clean).compute()
+    output_xr = _predict_func(model, input_xr, persist, proba, clean).compute()
 
     return output_xr

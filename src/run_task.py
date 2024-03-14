@@ -154,7 +154,7 @@ def main(
     searcher = PystacSearcher(
         catalog="https://stac.staging.digitalearthpacific.org",
         collections=["dep-s1-mosaic", "dep-s2-geomad"],
-        datetime=year
+        datetime=year,
     )
 
     # A loader to load them
