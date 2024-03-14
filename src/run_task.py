@@ -217,7 +217,7 @@ def main(
             items_by_collection["cop-dem-glo-30"] = dem_searcher.search(area)
 
             results = {k: len(v) for k, v in items_by_collection.items()}
-            log.info(",".join([f"{k}:{v}" for k, v in results.items()]))
+            log.info("Found: " + ", ".join([f"{k}:{v}" for k, v in results.items()]))
 
             all_data = [
                 loader.load(items, area).squeeze("time")
@@ -227,6 +227,9 @@ def main(
             data = xr.merge(all_data, compat="override")
             data = data.rename({"data": "elevation"})
             data = data.drop_vars(["median_vv", "median_vh", "std_vv", "std_vh"])
+
+            # Add all the indices to the data
+            data = add_indices(data)
 
             output_data = processor.process(data)
             log.info(
