@@ -1,12 +1,16 @@
 from pathlib import Path
 
 import boto3
+import dask
+import dask.array as da
 import geopandas as gpd
 import joblib
 import numpy as np
 import typer
 import xarray as xr
 from dask.distributed import Client
+from dask_ml.wrappers import ParallelPostFit
+from datacube.utils.geometry import assign_crs
 from dep_tools.aws import object_exists
 from dep_tools.azure import blob_exists
 from dep_tools.exceptions import EmptyCollectionError
@@ -21,13 +25,6 @@ from dep_tools.utils import get_logger
 from dep_tools.writers import AwsDsCogWriter, AzureDsWriter
 from typing_extensions import Annotated
 from xarray import DataArray, Dataset
-
-import dask
-import dask.array as da
-import xarray as xr
-from datacube.utils.geometry import assign_crs
-
-from dask_ml.wrappers import ParallelPostFit
 
 
 def predict_xr(
@@ -93,9 +90,12 @@ def predict_xr(
     def _predict_func(model, input_xr, persist, proba, clean, return_input):
         x, y, crs = input_xr.x, input_xr.y, input_xr.geobox.crs
 
+        variables = list(input_xr.data_vars)
+        variables.sort()
+
         input_data = []
 
-        for var_name in input_xr.data_vars:
+        for var_name in variables:
             input_data.append(input_xr[var_name])
 
         input_data_flattened = []
@@ -107,12 +107,12 @@ def predict_xr(
         # reshape for prediction
         input_data_flattened = da.array(input_data_flattened).transpose()
 
-        if clean == True:
+        if clean:
             input_data_flattened = da.where(
                 da.isfinite(input_data_flattened), input_data_flattened, 0
             )
 
-        if (proba == True) & (persist == True):
+        if (proba) & (persist):
             # persisting data so we don't require loading all the data twice
             input_data_flattened = input_data_flattened.persist()
 
@@ -121,7 +121,7 @@ def predict_xr(
         out_class = model.predict(input_data_flattened)
 
         # Mask out NaN or Inf values in results
-        if clean == True:
+        if clean:
             out_class = da.where(da.isfinite(out_class), out_class, 0)
 
         # Reshape when writing out
@@ -132,14 +132,14 @@ def predict_xr(
 
         output_xr = output_xr.to_dataset(name="class")
 
-        if proba == True:
+        if proba:
             print("   probabilities...")
             out_proba = model.predict_proba(input_data_flattened)
 
             # convert to %
             out_proba = da.max(out_proba, axis=1) * 100.0
 
-            if clean == True:
+            if clean:
                 out_proba = da.where(da.isfinite(out_proba), out_proba, 0)
 
             out_proba = out_proba.reshape(len(y), len(x))
@@ -149,7 +149,7 @@ def predict_xr(
             )
             output_xr["proba"] = out_proba
 
-        if return_input == True:
+        if return_input:
             print("   input features...")
             # unflatten the input_data_flattened array and append
             # to the output_xr containin the predictions
@@ -187,7 +187,7 @@ def predict_xr(
 
         return assign_crs(output_xr, str(crs))
 
-    if dask == True:
+    if dask:
         # convert model to dask predict
         model = ParallelPostFit(model)
         with joblib.parallel_backend("dask"):
@@ -307,7 +307,7 @@ def main(
     xy_chunk_size: int = 4096,
     overwrite: Annotated[bool, typer.Option()] = False,
 ) -> None:
-    base_product = "s2s1"
+    base_product = "s1s2"
     tiles = get_tiles()
     area = tiles.loc[[tile_id]]
 
