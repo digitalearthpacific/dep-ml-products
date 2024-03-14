@@ -1,40 +1,38 @@
 kind: Workflow
 metadata:
-  generateName: sentinel-1-mosaic-
+  generateName: dep-ml-gravel-
   namespace: argo
 spec:
   entrypoint: workflow-entrypoint
-  serviceAccountName: public-bucket-writer
+  # serviceAccountName: public-bucket-writer
   podGC:
     strategy: OnWorkflowSuccess
     deleteDelayDuration: 600s
   parallelism: 20
-  # nodeSelector:
-  #   digitalearthpacific.org/node-size: argo-d64  # 245 GB Mem and 64 Cores
-  # tolerations:
-  # - key: digitalearthpacific.org/node-purpose
-  #   operator: Equal
-  #   value: argo
-  #   effect: NoSchedule
-  # - key: kubernetes.azure.com/scalesetpriority
-  #   operator: Equal
-  #   value: spot
-  #   effect: NoSchedule
+  nodeSelector:
+    digitalearthpacific.org/node-size: argo-d32  # 128 GB Mem and 32 Cores
+  tolerations:
+  - key: digitalearthpacific.org/node-purpose
+    operator: Equal
+    value: argo
+    effect: NoSchedule
+  - key: kubernetes.azure.com/scalesetpriority
+    operator: Equal
+    value: spot
+    effect: NoSchedule
   workflowMetadata:
     labels:
       app: s1_mosaic
   arguments:
     parameters:
     - name: version
-      value: "0.0.3b"  # The version of the data product being made
+      value: "0.0.0"  # The version of the data product being made
     - name: image-name
-      value: "dep-s1-mosaic"  # The Docker image
+      value: "dep-ml-products"  # The Docker image
     - name: image-tag
-      value: "0.0.2-6-gb015b6b"  # The Docker image and code version
+      value: "0.0.0"  # The Docker image and code version
     - name: memory-limit-per-worker
-      value: "100GB"   # Dask's memory limit per worker.
-    - name: bucket
-      value: "dep-public-test"  # The bucket to store the data
+      value: "40GB"   # Dask's memory limit per worker.
     - name: overwrite
       value: "--no-overwrite"  # Can be "--overwrite" or "--no-overwrite"
   templates:
@@ -53,8 +51,6 @@ spec:
                 value: "2023"  # One year "2022", or a period "2020-2021"
               - name: version
                 value: "{{ workflow.parameters.version }}"
-              - name: bucket
-                value: "{{ workflow.parameters.bucket }}"
               - name: overwrite
                 value: "{{ workflow.parameters.overwrite }}"
 
@@ -71,8 +67,6 @@ spec:
               value: "{{ workflow.parameters.version }}"
             - name: memory-limit-per-worker
               value: " {{ workflow.parameters.memory-limit-per-worker }}"
-            - name: bucket
-              value: "{{ workflow.parameters.bucket }}"
             - name: overwrite
               value: "{{ workflow.parameters.overwrite }}"
           withParam: "{{ tasks.generate-ids.outputs.result }}"
@@ -84,7 +78,6 @@ spec:
       - name: limit
       - name: years
       - name: version
-      - name: bucket
       - name: overwrite
     container:
       image: "ghcr.io/digitalearthpacific/{{ workflow.parameters.image-name }}:{{ workflow.parameters.image-tag }}"
@@ -104,8 +97,6 @@ spec:
         - "{{ inputs.parameters.version }}"
         - --limit
         - "{{ inputs.parameters.limit }}"
-        - --output-bucket
-        - "{{ inputs.parameters.bucket }}"
         - "{{ inputs.parameters.overwrite }}"
 
   - name: process
@@ -115,18 +106,17 @@ spec:
       - name: year
       - name: version
       - name: memory-limit-per-worker
-      - name: bucket
       - name: overwrite
     container:
       image: "ghcr.io/digitalearthpacific/{{ workflow.parameters.image-name }}:{{ workflow.parameters.image-tag }}"
       imagePullPolicy: IfNotPresent
       resources:
         requests:
-          memory: 100Gi
-          cpu: 12
+          memory: 35Gi
+          cpu: 10
         limits:
-          cpu: 15
-          memory: 120Gi
+          cpu: 10
+          memory: 50Gi
       command: [ python ]
       args:
         - src/run_task.py
@@ -136,8 +126,6 @@ spec:
         - "{{ inputs.parameters.year }}"
         - --version
         - "{{ inputs.parameters.version }}"
-        - --output-bucket
-        - "{{ inputs.parameters.bucket }}"
         - --memory-limit-per-worker
         - "{{ inputs.parameters.memory-limit-per-worker }}"
         - --n-workers
@@ -146,8 +134,13 @@ spec:
         - "64"
         - "{{ inputs.parameters.overwrite }}"
       env:
-        - name: PC_SDK_SUBSCRIPTION_KEY
+        - name: AZURE_STORAGE_ACCOUNT
           valueFrom:
             secretKeyRef:
-              name: pc-sdk-subscription-key
-              key: PC_SDK_SUBSCRIPTION_KEY
+              name: deppcpublicstorage-output-read-write
+              key: AZURE_STORAGE_ACCOUNT
+        - name: AZURE_STORAGE_SAS_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: deppcpublicstorage-output-read-write
+              key: AZURE_STORAGE_SAS_TOKEN

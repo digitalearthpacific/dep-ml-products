@@ -5,6 +5,7 @@ import geopandas as gpd
 import joblib
 import numpy as np
 import typer
+import xarray as xr
 from dask.distributed import Client
 from dep_tools.aws import object_exists
 from dep_tools.azure import blob_exists
@@ -151,11 +152,7 @@ def main(
             raise typer.Exit()
 
     # A searcher to find the data
-    searcher = PystacSearcher(
-        catalog="https://stac.staging.digitalearthpacific.org",
-        collections=["dep-s1-mosaic", "dep-s2-geomad"],
-        datetime=year,
-    )
+    # Set up later...
 
     # A loader to load them
     loader = OdcLoader(
@@ -202,10 +199,33 @@ def main(
     ):
         try:
             # Run the task
-            items = searcher.search(area)
-            log.info(f"Found {len(items)} items")
+            searcher = PystacSearcher(
+                catalog="https://stac.staging.digitalearthpacific.org",
+                collections=["dep_s1_mosaic", "dep_s2_geomad"],
+                datetime=year
+            )
 
-            data = loader.load(items, area)
+            items = searcher.search(area)
+
+            items_by_collection = {}
+            for item in items:
+                items_by_collection.setdefault(item.collection_id, []).append(item)
+
+            dem_searcher = PystacSearcher(
+                catalog="https://planetarycomputer.microsoft.com/api/stac/v1",
+                collections=["cop-dem-glo-30"]
+            )
+            items_by_collection["cop-dem-glo-30"] = dem_searcher.search(area)
+
+            results = {k: len(v) for k, v in items_by_collection.items()}
+            log.info(",".join([f"{k}:{v}" for k, v in results.items()]))
+
+            all_data = [loader.load(items, area).squeeze("time") for items in items_by_collection.values()]
+
+            data = xr.merge(all_data, compat='override')
+            data = data.rename({"data": "elevation"})
+            data = data.drop_vars(["median_vv", "median_vh", "std_vv", "std_vh"])
+
             log.info(f"Found {len(data.time)} timesteps to load")
 
             output_data = processor.process(data)

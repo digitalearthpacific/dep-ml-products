@@ -1,7 +1,5 @@
 import dask.array as da
-import joblib
 import xarray as xr
-from dask_ml.wrappers import ParallelPostFit
 from datacube.utils.geometry import assign_crs
 
 
