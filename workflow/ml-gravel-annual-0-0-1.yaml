@@ -30,9 +30,9 @@ spec:
     - name: image-name
       value: "dep-ml-products"  # The Docker image
     - name: image-tag
-      value: "0.0.1"  # The Docker image and code version
+      value: "0.0.1-3-g3a1bc56"  # The Docker image and code version
     - name: memory-limit-per-worker
-      value: "140GB"   # Dask's memory limit per worker.
+      value: "220GB"   # Dask's memory limit per worker.
     - name: model-path
       value: "models/test_model_12032024.dump"
     - name: overwrite
@@ -128,11 +128,11 @@ spec:
       imagePullPolicy: IfNotPresent
       resources:
         requests:
-          memory: 120Gi
-          cpu: 30
+          memory: 220Gi
+          cpu: 50
         limits:
-          cpu: 30
-          memory: 140Gi
+          cpu: 50
+          memory: 240Gi
       command: [ python ]
       args:
         - src/run_task.py
