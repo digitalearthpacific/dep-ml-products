@@ -4,7 +4,6 @@ from itertools import product
 from typing import Annotated, Optional
 
 import typer
-from dep_tools.azure import blob_exists
 from dep_tools.aws import object_exists
 
 from run_task import get_tiles, get_item_path
@@ -15,7 +14,7 @@ def main(
     version: Annotated[str, typer.Option()],
     regions: Optional[str] = None,
     limit: Optional[str] = None,
-    output_bucket: Optional[str] = None,
+    output_bucket: Annotated[str, typer.Option] = "dep-public-staging",
     output_prefix: Optional[str] = None,
     overwrite: Annotated[bool, typer.Option()] = False,
 ) -> None:
@@ -48,17 +47,15 @@ def main(
     if not overwrite:
         valid_tasks = []
         for task in tasks:
-            itempath = get_item_path("s2s1", "mrd", version, task["year"], prefix="dep")
+            itempath = get_item_path(
+                output_bucket, "s2s1", "mrd", version, task["year"], prefix="dep"
+            )
             stac_path = itempath.stac_path(task["tile-id"])
 
             if output_prefix is not None:
                 stac_path = f"{output_prefix}/{stac_path}"
 
-            exists = False
-            if output_bucket is not None:
-                exists = object_exists(output_bucket, stac_path)
-            else:
-                exists = blob_exists(stac_path)
+            exists = object_exists(output_bucket, stac_path)
 
             if not exists:
                 valid_tasks.append(task)
