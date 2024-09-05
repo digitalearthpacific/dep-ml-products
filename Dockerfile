@@ -1,4 +1,4 @@
-FROM ghcr.io/osgeo/gdal:ubuntu-full-3.7.3
+FROM ghcr.io/osgeo/gdal:ubuntu-full-3.8.4
 
 # Don't use old pygeos
 ENV USE_PYGEOS=0
