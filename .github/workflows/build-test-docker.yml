@@ -51,7 +51,7 @@ jobs:
 
   push:
     permissions: write-all
-    if: github.ref == 'refs/heads/main' || github.event_name == 'release'
+    if: github.ref == 'refs/heads/main' || github.event_name == 'release' || github.ref == 'refs/heads/aws'
     needs: test
     runs-on: ubuntu-latest
     steps:
