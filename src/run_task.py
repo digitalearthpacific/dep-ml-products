@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import boto3
@@ -11,19 +12,16 @@ import numpy as np
 import typer
 import xarray as xr
 from dask.distributed import Client
-from dask_ml.wrappers import ParallelPostFit
-from datacube.utils.geometry import assign_crs
-from dep_tools.aws import object_exists
-from dep_tools.azure import blob_exists
+from dep_tools.aws import object_exists, auth, write_stac_s3
 from dep_tools.exceptions import EmptyCollectionError
 from dep_tools.loaders import OdcLoader
 from dep_tools.namers import S3ItemPath
 from dep_tools.processors import Processor
 from dep_tools.searchers import PystacSearcher
-from dep_tools.stac_utils import set_stac_properties
+from dep_tools.stac_utils import set_stac_properties, get_stac_item
 from dep_tools.utils import get_logger
 
-from dep_tools.writers import AwsDsCogWriter
+from dep_tools.writers import AwsDsCogWriter, AwsStacWriter
 from typing_extensions import Annotated
 from xarray import DataArray, Dataset
 
@@ -142,6 +140,7 @@ def main(
     xy_chunk_size: int = 4096,
     overwrite: Annotated[bool, typer.Option()] = False,
 ) -> None:
+    auth(bucket=output_bucket, profile_name=os.environ.get("AWS_PROFILE"))
     base_product = "s2s1"
     tiles = get_tiles()
     area = tiles.loc[[tile_id]]
@@ -240,7 +239,11 @@ def main(
                 f"Processed data to shape {[output_data.sizes[d] for d in ['x', 'y']]}"
             )
 
-            paths = writer.write(output_data, tile_id)
+            paths = writer.write(output_data, tile_id) + [stac_document]
+            stac_item = get_stac_item(
+                itempath=itempath, item_id=tile_id, data=output_data
+            )
+            write_stac_s3(stac_item, stac_document, output_bucket)
             if paths is not None:
                 log.info(f"Completed writing to {paths[-1]}")
             else:
