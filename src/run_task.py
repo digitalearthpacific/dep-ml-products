@@ -137,8 +137,8 @@ def main(
     output_bucket: str = "dep-public-staging",
     output_resolution: int = 10,
     memory_limit_per_worker: str = "16GB",
-    n_workers: int = 4,  # 1,
-    threads_per_worker: int = 4,  # 32,
+    n_workers: int = 1,
+    threads_per_worker: int = 32,
     xy_chunk_size: int = 4096,
     overwrite: Annotated[bool, typer.Option()] = False,
 ) -> None:
@@ -250,7 +250,6 @@ def main(
             log.warning("No data found for this tile.")
         except ValueError as e:
             log.warning("Failed to find Sentinel-1 data for this tile")
-            raise e
             raise typer.Exit()
         except Exception as e:
             log.exception(f"Failed to process {tile_id} with error: {e}")
