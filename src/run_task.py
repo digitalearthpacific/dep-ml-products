@@ -182,7 +182,6 @@ def main(
 
     # And a writer to bind them
     log.info("Writing with AWS writer")
-    boto3.setup_default_session(profile_name="dep-staging-admin")
     client = boto3.client("s3")
     writer = AwsDsCogWriter(
         itempath=itempath,
