@@ -1,8 +1,9 @@
 boto3
 dask-ml
 typer
-scikit-learn==1.2.2
-git+https://github.com/digitalearthpacific/dep-tools.git@add-s3-writer
+scikit-learn==1.5.1
+git+https://github.com/digitalearthpacific/dep-tools.git@a9d45db
+dea-tools
 
 --no-binary gdal
 --no-binary rasterio
