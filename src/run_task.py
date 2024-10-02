@@ -1,4 +1,4 @@
-import os
+from json import loads
 from pathlib import Path
 
 import boto3
@@ -12,8 +12,9 @@ import numpy as np
 import typer
 import xarray as xr
 from dask.distributed import Client
-from dep_tools.aws import object_exists, auth, write_stac_s3
+from dep_tools.aws import object_exists, write_stac_s3
 from dep_tools.exceptions import EmptyCollectionError
+from dep_tools.grids import get_tiles, PACIFIC_GRID_10
 from dep_tools.loaders import OdcLoader
 from dep_tools.namers import S3ItemPath
 from dep_tools.processors import Processor
@@ -21,19 +22,9 @@ from dep_tools.searchers import PystacSearcher
 from dep_tools.stac_utils import set_stac_properties, get_stac_item
 from dep_tools.utils import get_logger
 
-from dep_tools.writers import AwsDsCogWriter, AwsStacWriter
+from dep_tools.writers import AwsDsCogWriter
 from typing_extensions import Annotated
 from xarray import DataArray, Dataset
-
-
-def get_tiles() -> gpd.GeoDataFrame:
-    return (
-        gpd.read_file(
-            "https://raw.githubusercontent.com/digitalearthpacific/dep-grid/master/grid_pacific.geojson"
-        )
-        .astype({"tile_id": str, "country_code": str})
-        .set_index(["tile_id", "country_code"], drop=False)
-    )
 
 
 def get_item_path(
@@ -140,12 +131,11 @@ def main(
     xy_chunk_size: int = 4096,
     overwrite: Annotated[bool, typer.Option()] = False,
 ) -> None:
-    auth(bucket=output_bucket, profile_name=os.environ.get("AWS_PROFILE"))
     base_product = "s2s1"
-    tiles = get_tiles()
-    area = tiles.loc[[tile_id]]
+    grid = PACIFIC_GRID_10
+    area = grid.tile_geobox(tuple(loads(tile_id)))
 
-    log = get_logger(tile_id, "Gravel")
+    log = get_logger(loads(tile_id), "Gravel")
     log.info(f"Starting processing version {version} for {year}")
 
     itempath = get_item_path(

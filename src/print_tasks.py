@@ -18,10 +18,7 @@ def main(
     output_prefix: Optional[str] = None,
     overwrite: Annotated[bool, typer.Option()] = False,
 ) -> None:
-    tiles = get_tiles()
-
-    if regions is not None:
-        region_codes = None if regions.upper() == "ALL" else regions.split(",")
+    tiles = get_tiles(resolution=10, country_codes=[regions])
 
     if limit is not None:
         limit = int(limit)
@@ -33,13 +30,10 @@ def main(
     elif len(years) > 2:
         ValueError(f"{years} is not a valid value for --years")
 
-    # Filter by country codes if we have them
-    if regions is not None:
-        tiles = tiles.loc[tiles.country_code.isin(region_codes)]
-
+    tile_ids = [index for index, _ in tiles]
     tasks = [
         {"tile-id": tile, "year": year, "version": version}
-        for tile, year in product(list(tiles.tile_id), years)
+        for tile, year in product(tile_ids, years)
     ]
 
     # If we don't want to overwrite, then we should only run tasks that don't already exist
