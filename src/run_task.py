@@ -92,6 +92,7 @@ class MLProcessor(Processor):
 
         filled = input_data.fillna(-9999.0)
 
+        self.chunk_size = 1024
         predicted = predict_xr(
             loaded_model, filled, chunk_size=self.chunk_size, proba=True
         )
@@ -134,8 +135,9 @@ def main(
     base_product = "s2s1"
     grid = PACIFIC_GRID_10
     area = grid.tile_geobox(tuple(loads(tile_id)))
+    tile_id = tile_id[1:-1]
 
-    log = get_logger(loads(tile_id), "Gravel")
+    log = get_logger(tile_id, "Gravel")
     log.info(f"Starting processing version {version} for {year}")
 
     itempath = get_item_path(
