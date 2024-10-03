@@ -187,7 +187,6 @@ def main(
         memory_limit=memory_limit_per_worker,
     ):
         try:
-            breakpoint()
             # Run the task
             searcher = PystacSearcher(
                 catalog="https://stac.staging.digitalearthpacific.org",
