@@ -28,7 +28,7 @@ spec:
     - name: image-name
       value: "dep-ml-products"  # The Docker image
     - name: image-tag
-      value: "0.0.1-14-g9a0e815"
+      value: "0.0.1-18-g02e6075"
     - name: memory-limit-per-worker
       value: "220GB"   # Dask's memory limit per worker.
     - name: model-path
@@ -44,7 +44,7 @@ spec:
           arguments:
             parameters:
               - name: regions
-                value: "FJ"  # Comma separated list "FJ,TO" or 'ALL'
+                value: "FJI"  
               - name: limit
                 value: "999"
               - name: years
