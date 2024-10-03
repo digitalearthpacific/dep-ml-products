@@ -158,8 +158,6 @@ def main(
 
     # A loader to load them
     loader = OdcLoader(
-        crs=3832,
-        resolution=output_resolution,
         groupby="solar_day",
         chunks=dict(time=1, x=xy_chunk_size, y=xy_chunk_size),
         fail_on_error=False,
@@ -189,6 +187,7 @@ def main(
         memory_limit=memory_limit_per_worker,
     ):
         try:
+            breakpoint()
             # Run the task
             searcher = PystacSearcher(
                 catalog="https://stac.staging.digitalearthpacific.org",
