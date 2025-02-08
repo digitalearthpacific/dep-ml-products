@@ -12,7 +12,7 @@ import numpy as np
 import typer
 import xarray as xr
 from dask.distributed import Client
-from dep_tools.aws import object_exists, auth, write_stac_s3
+from dep_tools.aws import object_exists, write_stac_s3
 from dep_tools.exceptions import EmptyCollectionError
 from dep_tools.loaders import OdcLoader
 from dep_tools.namers import S3ItemPath
@@ -25,6 +25,9 @@ from dep_tools.writers import AwsDsCogWriter, AwsStacWriter
 from typing_extensions import Annotated
 from xarray import DataArray, Dataset
 
+from odc.stac import configure_s3_access
+
+#python src/run_task.py --year 2023 --version 0.0.1 --tile-id 64,20 --overwrite
 
 def get_tiles() -> gpd.GeoDataFrame:
     return (
@@ -108,11 +111,13 @@ class MLProcessor(Processor):
         # Convert to int
         cleaned_predictions = predicted.copy(deep=True)
         cleaned_predictions["Predictions"].data = predicted["Predictions"].data.astype(
-            np.int8
+            np.float32
         )
         cleaned_predictions["Probabilities"].data = predicted[
             "Probabilities"
-        ].data.astype(np.float32)
+        ].data.astype(
+            np.float32
+        )
         # JA: old names were "class" and "proba" and I change back here in case
         # somewhere downstream expects them
         cleaned_predictions = cleaned_predictions.rename(
@@ -123,6 +128,8 @@ class MLProcessor(Processor):
 
         if self.load_data:
             output = output.compute()
+
+        #output = output.astype('uint16')
 
         return output
 
@@ -135,12 +142,15 @@ def main(
     output_bucket: str = "dep-public-staging",
     output_resolution: int = 10,
     memory_limit_per_worker: str = "16GB",
-    n_workers: int = 1,
+    n_workers: int = 4,
     threads_per_worker: int = 32,
     xy_chunk_size: int = 4096,
     overwrite: Annotated[bool, typer.Option()] = False,
 ) -> None:
-    auth(bucket=output_bucket, profile_name=os.environ.get("AWS_PROFILE"))
+    #auth(bucket=output_bucket, profile_name=os.environ.get("AWS_PROFILE"))
+    aws_client = boto3.client("s3")
+    configure_s3_access(cloud_defaults=True, requester_pays=True)
+    
     base_product = "s2s1"
     tiles = get_tiles()
     area = tiles.loc[[tile_id]]
@@ -213,7 +223,8 @@ def main(
                 items_by_collection.setdefault(item.collection_id, []).append(item)
 
             dem_searcher = PystacSearcher(
-                catalog="https://planetarycomputer.microsoft.com/api/stac/v1",
+                #catalog="https://planetarycomputer.microsoft.com/api/stac/v1",
+                catalog = "https://earth-search.aws.element84.com/v1",
                 collections=["cop-dem-glo-30"],
             )
             items_by_collection["cop-dem-glo-30"] = dem_searcher.search(area)
