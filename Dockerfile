@@ -1,23 +1,25 @@
-FROM ghcr.io/osgeo/gdal:ubuntu-full-3.8.4
-
-# Don't use old pygeos
-ENV USE_PYGEOS=0
+FROM ghcr.io/osgeo/gdal:ubuntu-small-3.13.2 AS base
 
 RUN apt-get update && apt-get install -y \
     python3-pip \
-    python3-dev \
+    python3-venv \
     git \
-    libpq-dev \
-    ca-certificates \
+    curl \
     build-essential \
-    && apt-get autoclean \
-    && apt-get autoremove \
+    pkg-config \
+    && apt-get clean \
     && rm -rf /var/lib/{apt,dpkg,cache,log}
 
-RUN pip3 install --upgrade pip setuptools wheel
-ADD requirements.txt /tmp/requirements.txt
-RUN pip3 install -r /tmp/requirements.txt
-
-ADD . /code
-
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+ENV UV_PROJECT_ENVIRONMENT=/code/.venv UV_LINK_MODE=copy
 WORKDIR /code
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-install-project --no-dev
+ 
+COPY . .
+RUN uv sync --frozen --no-dev
+ENV PATH="/code/.venv/bin:$PATH"
+ 
+FROM base AS final
+RUN python src/print_tasks.py --help

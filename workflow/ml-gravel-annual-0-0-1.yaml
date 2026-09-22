@@ -1,6 +1,6 @@
 kind: Workflow
 metadata:
-  generateName: dep-ml-gravel-
+  generateName: dep-ml-gravel- # TODO: Why is this called gravel? I think it is a LULC workflow.
   namespace: argo
 spec:
   entrypoint: workflow-entrypoint
@@ -10,7 +10,7 @@ spec:
     deleteDelayDuration: 600s
   parallelism: 20
   tolerations:
-    - key: digitalearthpacific.org/node-purpose
+    - key: digitalearthpacific.org/node-purpose # digitalearthpacific.io now?
       operator: Equal
       value: argo
       effect: NoSchedule
