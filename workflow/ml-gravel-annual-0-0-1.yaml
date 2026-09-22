@@ -10,7 +10,7 @@ spec:
     deleteDelayDuration: 600s
   parallelism: 20
   tolerations:
-    - key: digitalearthpacific.org/node-purpose
+    - key: digitalearthpacific.org/node-purpose # digitalearthpacific.io now?
       operator: Equal
       value: argo
       effect: NoSchedule

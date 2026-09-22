@@ -4,28 +4,25 @@ from pathlib import Path
 import boto3
 import dask
 import dask.array as da
-
-from dea_tools.classification import predict_xr
 import geopandas as gpd
 import joblib
 import numpy as np
 import typer
 import xarray as xr
 from dask.distributed import Client
+from dea_tools.classification import predict_xr
 from dep_tools.aws import object_exists, write_stac_s3
 from dep_tools.exceptions import EmptyCollectionError
 from dep_tools.loaders import OdcLoader
 from dep_tools.namers import S3ItemPath
 from dep_tools.processors import Processor
 from dep_tools.searchers import PystacSearcher
-from dep_tools.stac_utils import set_stac_properties, get_stac_item
+from dep_tools.stac_utils import get_stac_item, set_stac_properties
 from dep_tools.utils import get_logger
-
 from dep_tools.writers import AwsDsCogWriter, AwsStacWriter
+from odc.stac import configure_s3_access
 from typing_extensions import Annotated
 from xarray import DataArray, Dataset
-
-from odc.stac import configure_s3_access
 
 # python src/run_task.py --year 2023 --version 0.0.1 --tile-id 64,20 --overwrite
 
@@ -55,32 +52,37 @@ def get_item_path(
 
 
 def add_indices(data: Dataset) -> Dataset:
-    # Incorporate NDVI (Normalised Difference Vegetation Index) = (NIR-red)/(NIR+red)
-    data["ndvi"] = (data["B08"] - data["B04"]) / (data["B08"] + data["B04"])
+    # NDVI (Normalised Difference Vegetation Index) = (NIR-red)/(NIR+red)
+    data["ndvi"] = (data["nir"] - data["red"]) / (data["nir"] + data["red"])
 
-    # Incorporate MNDWI (Mean Normalised Difference Water Index) = (Green – SWIR) / (Green + SWIR)
-    data["mndwi"] = (data["B03"] - data["B12"]) / (data["B03"] + data["B12"])
+    # MNDWI (Modified Normalised Difference Water Index) = (Green – SWIR) / (Green + SWIR)
+    # Note: uses swir22 (B12/SWIR2) rather than the more common swir16 (B11/SWIR1) variant.
+    data["mndwi"] = (data["green"] - data["swir22"]) / (data["green"] + data["swir22"])
 
-    # Incorporate EVI (Enhanced Vegetation Index) = 2.5NIR−RED(NIR+6RED−7.5BLUE)+1
-    data["evi"] = (2.5 * (data["B08"] - data["B04"])) * (
-        (data["B08"] + (6 * (data["B04"]) - (7.5 * (data["B02"]))))
-    ) + 1
-
-    # Incorporate SAVI (Standard Vegetation Index) = (800nm−670nm) / (800nm+670nm+L(1+L)) # where L = 0.5
-    data["savi"] = (data["B07"] - data["B04"]) / (
-        data["B07"] + data["B04"] + 0.5 * (1 + 0.5)
+    # EVI (Enhanced Vegetation Index) = 2.5 * (NIR-RED) / (NIR + 6*RED - 7.5*BLUE + 1)
+    data["evi"] = 2.5 * (data["nir"] - data["red"]) / (
+        data["nir"] + 6 * data["red"] - 7.5 * data["blue"] + 1
     )
 
-    # Incorporate BSI (Bare Soil Index) = ((B11 + B4) - (B8 + B2)) / ((B11 + B4) + (B8 + B2)) # https://custom-scripts.sentinel-hub.com/custom-scripts/sentinel-2/barren_soil/
-    data["bsi"] = ((data["B11"] + data["B04"]) - (data["B08"] + data["B02"])) / (
-        (data["B11"] + data["B04"]) + (data["B08"] + data["B02"])
+    # SAVI (Soil Adjusted Vegetation Index) = (NIR-RED) / (NIR+RED+L) * (1+L), L = 0.5
+    L = 0.5
+    data["savi"] = (data["nir"] - data["red"]) / (
+        data["nir"] + data["red"] + L
+    ) * (1 + L)
+
+    # BSI (Bare Soil Index) = ((SWIR1 + RED) - (NIR + BLUE)) / ((SWIR1 + RED) + (NIR + BLUE))
+    # https://custom-scripts.sentinel-hub.com/custom-scripts/sentinel-2/barren_soil/
+    data["bsi"] = ((data["swir16"] + data["red"]) - (data["nir"] + data["blue"])) / (
+        (data["swir16"] + data["red"]) + (data["nir"] + data["blue"])
     )
 
-    # Incorporate NDMI (Normalised Difference Moisture Index) # https://custom-scripts.sentinel-hub.com/custom-scripts/sentinel-2/ndmi/
-    data["ndmi"] = ((data["B08"]) - (data["B11"])) / ((data["B08"]) + (data["B11"]))
+    # NDMI (Normalised Difference Moisture Index) = (NIR-SWIR1)/(NIR+SWIR1)
+    # https://custom-scripts.sentinel-hub.com/custom-scripts/sentinel-2/ndmi/
+    data["ndmi"] = (data["nir"] - data["swir16"]) / (data["nir"] + data["swir16"])
 
-    # Incorporate NDBI (Normalised Difference Built-up Index) (B06 - B05) / (B06 + B05); # - built up ratio of vegetation to paved surface - let BU = (ndvi - ndbi) - https://custom-scripts.sentinel-hub.com/custom-scripts/landsat-8/built_up_index/
-    data["ndbi"] = ((data["B06"]) - (data["B05"])) / ((data["B06"]) + (data["B05"]))
+    # NDBI (Normalised Difference Built-up Index) = (SWIR1-NIR)/(SWIR1+NIR)
+    # https://custom-scripts.sentinel-hub.com/custom-scripts/landsat-8/built_up_index/
+    data["ndbi"] = (data["swir16"] - data["nir"]) / (data["swir16"] + data["nir"])
 
     return data
 
@@ -211,7 +213,7 @@ def main(
             # Run the task
             searcher = PystacSearcher(
                 catalog="https://stac.staging.digitalearthpacific.io",
-                collections=["dep_s1_mosaic", "dep_s2_geomad"],
+                collections=["dep_s1_mosaic", "dep_s2_geomad"], # TODO: replace dep_s1_mosaic with dep_s1_geomad?
                 datetime=year,
             )
 
@@ -239,7 +241,8 @@ def main(
             data = xr.merge(all_data, compat="override")
             data = data.rename({"data": "elevation"})
 
-            data = data.drop_vars(["median_vv", "median_vh", "std_vv", "std_vh"])
+            data = data.drop_vars(["vv", "vh", "stdev_vv", "stdev_vh"])
+            data = data.chunk({"x": xy_chunk_size, "y": xy_chunk_size})
 
             # Add all the indices to the data
             data = add_indices(data)
