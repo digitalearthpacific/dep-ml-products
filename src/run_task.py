@@ -210,7 +210,7 @@ def main(
         try:
             # Run the task
             searcher = PystacSearcher(
-                catalog="https://stac.staging.digitalearthpacific.org",
+                catalog="https://stac.staging.digitalearthpacific.io",
                 collections=["dep_s1_mosaic", "dep_s2_geomad"],
                 datetime=year,
             )
