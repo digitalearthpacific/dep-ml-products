@@ -1,0 +1,31 @@
+[project]
+name = "minerals-model"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "dask[distributed]>=2026.8.0",
+    "geopandas>=1.2,<2",
+    "joblib>=1.6,<2",
+    "matplotlib>=3.11,<4",
+    "numpy>=2.5,<3",
+    "odc-geo>=0.5.3,<0.6",
+    "odc-stac>=0.5.3,<0.6",
+    "pandas>=3.1,<4",
+    "planetary-computer>=1.0,<2",
+    "pystac>=1.15,<2",
+    "pystac-client>=0.9.1,<0.10",
+    "rasterio>=1.5,<2",
+    "scikit-learn>=1.9,<2",
+    "shapely>=2.2,<3",
+    "xarray>=2026.9.0",
+    "folium>=0.20,<0.21",
+    "mapclassify>=2.11,<3",
+    "scipy>=1.18,<2",
+]
+
+[dependency-groups]
+dev = [
+    "jupyterlab>=4.6,<5",
+    "prek>=0.5.7",
+    "ruff>=0.17.2",
+]
