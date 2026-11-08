@@ -24,11 +24,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check formatting
-        uses: rickstaa/action-black@v1
-        id: action_black
+      - name: Lint
+        uses: astral-sh/ruff-action@v3
         with:
-          black_args: "--check src"
+          version: "0.15.22"
+          args: "check mrd tests"
+
+      - name: Check formatting
+        uses: astral-sh/ruff-action@v3
+        with:
+          version: "0.15.22"
+          args: "format --check mrd tests"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
