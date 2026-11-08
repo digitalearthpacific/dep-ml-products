@@ -28,13 +28,15 @@ jobs:
         uses: astral-sh/ruff-action@v3
         with:
           version: "0.15.22"
-          args: "check mrd tests"
+          args: "check"
+          src: "mrd tests"
 
       - name: Check formatting
         uses: astral-sh/ruff-action@v3
         with:
           version: "0.15.22"
-          args: "format --check mrd tests"
+          args: "format --check"
+          src: "mrd tests"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

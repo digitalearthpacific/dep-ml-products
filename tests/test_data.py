@@ -4,7 +4,9 @@
 """
 
 import sys
+from types import SimpleNamespace
 
+import geopandas as gpd
 import joblib
 import numpy as np
 import pandas as pd
@@ -18,6 +20,7 @@ from odc.stac import load as stac_load
 from shapely.geometry import Point
 from sklearn.ensemble import RandomForestClassifier
 
+import mrd.data
 from mrd import NODATA
 from mrd.data import (
     FEATURES,
@@ -26,6 +29,7 @@ from mrd.data import (
     S1_COLLECTION,
     S2_COLLECTION,
     S2_REFLECTANCE,
+    TERRAIN,
     _assign_geobox,
     _merge_geographic_halves,
     _overlaps,
@@ -33,6 +37,7 @@ from mrd.data import (
     _shift_to_pm180,
     add_indices,
     load_data,
+    load_dem_terrain,
     load_model,
     predict,
     sample_points,
@@ -158,13 +163,24 @@ def test_sample_points():
     geobox = GeoBox.from_bbox((0, 0, 40, 30), "EPSG:3832", resolution=10)
     ds = _grid(geobox, a=np.arange(12.0).reshape(3, 4), b=np.arange(12.0).reshape(3, 4) * 2)
     points = pd.DataFrame({"geometry": [Point(5, 25), Point(35, 5), Point(500, 500)]}, index=[7, 8, 9])
-    import geopandas as gpd
-
     points = gpd.GeoDataFrame(points, crs="EPSG:3832")
     sampled = sample_points(ds, points)
     assert list(sampled.columns) == ["a", "b"]
     assert list(sampled.index) == [7, 8]
     assert sampled.loc[7, "a"] == 0 and sampled.loc[8, "a"] == 11 and sampled.loc[8, "b"] == 22
+    outside = sample_points(ds, points.loc[[9]])
+    assert outside.empty and list(outside.columns) == ["a", "b"]
+
+
+def test_no_dem_items_gives_chunked_nan_terrain(monkeypatch):
+    monkeypatch.setattr(mrd.data, "Client", SimpleNamespace(open=lambda url: None))
+    monkeypatch.setattr(mrd.data, "_search", lambda *args, **kwargs: [])
+    geobox = GeoBox.from_bbox((0, 0, 100, 80), "EPSG:3832", resolution=10)
+    terrain = load_dem_terrain(geobox, {"x": 4, "y": 4})
+    assert list(terrain.data_vars) == TERRAIN
+    assert terrain.odc.geobox == geobox
+    assert terrain.slope.chunks == ((4, 4), (4, 4, 2))
+    assert terrain.slope.isnull().all()
 
 
 def _model(labels=(1, 2, 3)) -> RandomForestClassifier:

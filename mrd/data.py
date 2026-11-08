@@ -252,8 +252,9 @@ def load_dem_terrain(geobox: GeoBox, chunks: dict) -> xr.Dataset:
         raise RuntimeError(f"Too many DEM items ({len(items)}). Expected ~4, the search may be world-spanning.")
     if not items:
         logger.warning("No DEM items; terrain is NaN")
-        nan = da.full(geobox.shape, np.nan, dtype="float32", chunks=_dask_chunks(chunks))
-        return assign_crs(xr.Dataset({n: (("y", "x"), nan) for n in TERRAIN}, coords=xr_coords(geobox)), geobox.crs)
+        nan = da.full(tuple(geobox.shape), np.nan, dtype="float32")
+        terrain = xr.Dataset({n: (("y", "x"), nan) for n in TERRAIN}, coords=xr_coords(geobox))
+        return assign_crs(terrain, geobox.crs).chunk(_dask_chunks(chunks))
     terrain = terrain_features(_load_dem(items, area))
     return terrain.chunk().odc.reproject(geobox, resampling="nearest").chunk(_dask_chunks(chunks))
 
