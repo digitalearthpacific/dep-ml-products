@@ -283,7 +283,7 @@ Not adopted from ldn-lulc:
 All tasks are done on the `productionise` branch, which branches off `will-run`. PRs target `will-run`, not `main`.
 
 ### T1: mrd package, shared loader, single environment
-**Status:** Not started
+**Status:** Done
 **Depends on:** None
 **In scope:**
 - `mrd/__init__.py` with `VERSION = "0-0-2"`, constants and the class map.
@@ -331,7 +331,7 @@ All tasks are done on the `productionise` branch, which branches off `will-run`.
 - Hyperparameter search.
 - Other training years.
 - New labels.
-**Surfaces touched:** `mrd/train.py`, `mrd/cli.py`, `data/mred-tdata.geojson`, `notebooks/1-ml-learning.ipynb`
+**Surfaces touched:** `mrd/train.py`, `mrd/cli.py`, `mrd/__init__.py`, `tests/test_train.py`, `pyproject.toml`, `uv.lock`, `data/mred-tdata.geojson`, `notebooks/1-ml-learning.ipynb`
 **Interfaces:** `mrd train --year 2022 --version 0-0-2` writes `s3://dep-public-staging/dep_s2s1_mrd/models/0-0-2/{model.joblib,metadata.json}`.
 **Verification:**
 - AC1 and AC2.

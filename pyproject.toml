@@ -18,6 +18,8 @@ dependencies = [
     "odc-stac<0.6",
     "pandas",
     "planetary-computer",
+    # Parquet cache of training features.
+    "pyarrow",
     "pystac",
     "pystac-client",
     "rasterio",

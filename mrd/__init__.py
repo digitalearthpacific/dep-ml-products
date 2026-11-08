@@ -7,7 +7,8 @@ MRD is Fiji's Mineral Resources Department, the partner this product is built fo
 VERSION = "0-0-2"
 
 OUTPUT_BUCKET = "dep-public-staging"
-MODEL_URL = f"https://{OUTPUT_BUCKET}.s3.us-west-2.amazonaws.com/dep_s2s1_mrd/models/{VERSION}/model.joblib"
+MODEL_PREFIX = "dep_s2s1_mrd/models"
+MODEL_URL = f"https://{OUTPUT_BUCKET}.s3.us-west-2.amazonaws.com/{MODEL_PREFIX}/{VERSION}/model.joblib"
 
 DEP_CATALOG = "https://stac.digitalearthpacific.org"
 DEM_CATALOG = "https://planetarycomputer.microsoft.com/api/stac/v1/"
