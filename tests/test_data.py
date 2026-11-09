@@ -123,7 +123,7 @@ def test_plane_rising_south_faces_north():
     assert np.allclose(t.slope.values, angle, atol=0.5)
     assert (t.northness.values > 0).all()
     assert np.allclose(t.eastness.values, 0, atol=1e-3)
-    assert "elevation_std" not in FEATURES and len(FEATURES) == 28
+    assert len(FEATURES) == 28
 
 
 def _half(left: float, values: np.ndarray) -> xr.Dataset:

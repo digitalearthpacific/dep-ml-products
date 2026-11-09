@@ -1,1 +1,8 @@
 data
+.venv
+.git
+.elephant-goldfish
+**/__pycache__
+**/*.egg-info
+**/*.tif
+**/*.tif.aux.xml

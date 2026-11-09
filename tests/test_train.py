@@ -1,7 +1,6 @@
 """Offline checks for mrd.train: run with `pytest tests`."""
 
 import json
-import subprocess
 from types import SimpleNamespace
 
 import geopandas as gpd
@@ -15,6 +14,7 @@ from shapely.geometry import Point
 
 import mrd.train as t
 from mrd import CLASSES
+from mrd.aws import s3_exists
 from mrd.data import FEATURES, NoDataError
 
 TILE = PACIFIC_GRID_10.tile_geobox((63, 20))
@@ -213,10 +213,10 @@ def test_s3_exists():
 
         return SimpleNamespace(head_object=head_object)
 
-    assert t._s3_exists(client(), "k") is True
-    assert t._s3_exists(client("404"), "k") is False
+    assert s3_exists(client(), "b", "k") is True
+    assert s3_exists(client("404"), "b", "k") is False
     with pytest.raises(ClientError):
-        t._s3_exists(client("403"), "k")
+        s3_exists(client("403"), "b", "k")
 
 
 class _StubS3:
@@ -233,7 +233,7 @@ class _StubS3:
 
 def test_upload(monkeypatch, tmp_path):
     stub = _StubS3(existing={"dep_s2s1_mrd/models/0-0-2/model.joblib"})
-    monkeypatch.setattr(t, "_s3_client", lambda: stub)
+    monkeypatch.setattr(t, "s3_client", lambda: stub)
     with pytest.raises(FileExistsError):
         t.upload(tmp_path, "0-0-2", overwrite=False)
     assert stub.uploads == []
@@ -242,36 +242,6 @@ def test_upload(monkeypatch, tmp_path):
         ("dep_s2s1_mrd/models/0-0-2/metadata.json", "application/json"),
         ("dep_s2s1_mrd/models/0-0-2/model.joblib", "application/octet-stream"),
     ]
-
-
-def _git(repo, *args):
-    subprocess.run(
-        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", *args],
-        check=True,
-        capture_output=True,
-    )
-
-
-def test_check_committed_uses_repo_root(monkeypatch, tmp_path):
-    repo = tmp_path / "repo"
-    (repo / "mrd").mkdir(parents=True)
-    (repo / "data").mkdir()
-    (repo / "mrd" / "x.py").write_text("x = 1\n")
-    (repo / ".gitignore").write_text("data\n")  # as in this repo: untracked data is hidden from git status
-    (repo / "data" / "points.geojson").write_text("{}")
-    _git(repo, "init", "-q")
-    _git(repo, "add", "mrd", ".gitignore")
-    _git(repo, "commit", "-q", "-m", "init")
-    monkeypatch.setattr(t, "ROOT", repo)
-    monkeypatch.chdir(tmp_path)  # not the repo root
-    with pytest.raises(RuntimeError, match="isn't tracked"):
-        t._check_committed(repo / "data" / "points.geojson")
-    _git(repo, "add", "-f", "data")
-    _git(repo, "commit", "-q", "-m", "data")
-    t._check_committed(repo / "data" / "points.geojson")
-    (repo / "mrd" / "x.py").write_text("x = 2\n")
-    with pytest.raises(RuntimeError, match="Commit these"):
-        t._check_committed(repo / "data" / "points.geojson")
 
 
 def test_upload_run_refuses_data_outside_repo(tmp_path):

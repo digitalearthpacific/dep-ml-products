@@ -12,20 +12,19 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
-import boto3
 import geopandas as gpd
 import joblib
 import numpy as np
 import pandas as pd
 import sklearn
-from botocore.exceptions import ClientError
 from dep_tools.grids import PACIFIC_GRID_10
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
 from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold, cross_val_predict
 
 import mrd.data
-from mrd import CLASSES, MODEL_PREFIX, OUTPUT_BUCKET, VERSION
+from mrd import CLASSES, MODEL_PREFIX, OUTPUT_BUCKET, VERSION, tile_index
+from mrd.aws import s3_client, s3_exists
 from mrd.data import FEATURES, S2_REFLECTANCE, NoDataError, load_data, sample_points
 
 logger = logging.getLogger(__name__)
@@ -45,8 +44,6 @@ TRAINING_CHUNKS = {"x": 512, "y": 512}
 HYPERPARAMETERS = {"n_estimators": 500, "class_weight": "balanced", "oob_score": True, "random_state": 42}
 CV_FOLDS = 5
 TABLE_COLUMNS = ["tile", CLASS_COLUMN, *FEATURES]
-# Paths that produce the model; they must be committed before an upload so metadata.json's git_sha describes them.
-MODEL_SOURCES = ["mrd", "pyproject.toml", "uv.lock"]
 
 
 def _sha256(path: Path) -> str:
@@ -88,11 +85,6 @@ def tile_ids(points: gpd.GeoDataFrame) -> pd.Series:
     return pd.Series([f"{i.x},{i.y}" for i in indices], index=points.index)
 
 
-def _tile_key(tile: str) -> tuple[int, int]:
-    col, row = tile.split(",")
-    return int(col), int(row)
-
-
 def build_table(points: gpd.GeoDataFrame, year: int) -> tuple[pd.DataFrame, int]:
     """Features at every point, tile by tile, and the number of points that couldn't be sampled.
 
@@ -101,10 +93,10 @@ def build_table(points: gpd.GeoDataFrame, year: int) -> tuple[pd.DataFrame, int]
     """
     tiles = tile_ids(points)
     tables, not_sampled = [], 0
-    for tile in sorted(tiles.unique(), key=_tile_key):
+    for tile in sorted(tiles.unique(), key=tile_index):
         tile_points = points[tiles == tile]
         try:
-            ds = load_data(PACIFIC_GRID_10.tile_geobox(_tile_key(tile)), year, TRAINING_CHUNKS)
+            ds = load_data(PACIFIC_GRID_10.tile_geobox(tile_index(tile)), year, TRAINING_CHUNKS)
         except NoDataError as e:
             logger.warning(f"Skipping {len(tile_points)} points in tile {tile}: {e}")
             not_sampled += len(tile_points)
@@ -134,13 +126,17 @@ def load_table(
     name = f"features-{year}-{_sha256(training_data)[:12]}-{_data_code_hash()[:12]}"
     table_path, counts_path = CACHE_DIR / f"{name}.parquet", CACHE_DIR / f"{name}.json"
     if use_cache and table_path.exists() and counts_path.exists():
-        table = pd.read_parquet(table_path)
+        # File handles, not paths: pyarrow then doesn't create its own local filesystem, which fails when another
+        # copy of Arrow is loaded (e.g. GDAL from Homebrew, linked by a source-built fiona).
+        with table_path.open("rb") as f:
+            table = pd.read_parquet(f)
         if list(table.columns) == TABLE_COLUMNS:
             logger.info(f"Using cached features {table_path}")
             return table, json.loads(counts_path.read_text())["not_sampled"], True
     table, not_sampled = build_table(points, year)
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    table.to_parquet(table_path)
+    with table_path.open("wb") as f:
+        table.to_parquet(f)
     counts_path.write_text(json.dumps({"not_sampled": not_sampled}))
     return table, not_sampled, False
 
@@ -222,34 +218,19 @@ def build_metadata(
     }
 
 
-def _s3_client():
-    return boto3.client("s3", region_name="us-west-2")
-
-
-def _s3_exists(client, key: str) -> bool:
-    """Whether the key exists. Only "not found" counts as missing; any other error (e.g. 403) is raised."""
-    try:
-        client.head_object(Bucket=OUTPUT_BUCKET, Key=key)
-        return True
-    except ClientError as e:
-        if e.response.get("Error", {}).get("Code") in ("404", "NoSuchKey", "NotFound"):
-            return False
-        raise
-
-
 def _keys(version: str) -> dict[str, str]:
     return {name: f"{MODEL_PREFIX}/{version}/{name}" for name in ["metadata.json", "model.joblib"]}
 
 
 def _check_not_published(client, version: str) -> None:
-    existing = [key for key in _keys(version).values() if _s3_exists(client, key)]
+    existing = [key for key in _keys(version).values() if s3_exists(client, OUTPUT_BUCKET, key)]
     if existing:
         raise FileExistsError(f"Already published (versions are immutable; use --overwrite to replace): {existing}")
 
 
 def upload(local_dir: Path, version: str, overwrite: bool) -> None:
     """Upload metadata.json then model.joblib, so a model is never published without its metadata."""
-    client = _s3_client()
+    client = s3_client()
     if not overwrite:
         _check_not_published(client, version)
     content_types = {"metadata.json": "application/json", "model.joblib": "application/octet-stream"}
@@ -258,23 +239,12 @@ def upload(local_dir: Path, version: str, overwrite: bool) -> None:
         logger.info(f"Uploaded s3://{OUTPUT_BUCKET}/{key}")
 
 
-def _check_committed(training_data: Path) -> None:
-    """Raise unless the code and training data that produce the model are committed."""
-    paths = [*MODEL_SOURCES, _relative_to_root(training_data)]
-    status = _git("status", "--porcelain", "--", *paths)
-    if status is None or status.strip():
-        raise RuntimeError(f"Commit these before uploading (or pass --allow-dirty):\n{status or 'git status failed'}")
-    if _git("ls-files", "--error-unmatch", "--", paths[-1]) is None:
-        raise RuntimeError(f"Training data {paths[-1]} isn't tracked by git. Commit it before uploading.")
-
-
 def train(
     year: int = 2022,
     version: str = VERSION,
     training_data: Path = TRAINING_DATA,
     upload_model: bool = True,
     overwrite: bool = False,
-    allow_dirty: bool = False,
 ) -> Path:
     """Train on all points, write model.joblib and metadata.json locally, and upload them unless upload_model is
     False. Upload runs always rebuild the features instead of using the cache. Returns the local directory.
@@ -283,10 +253,8 @@ def train(
     if upload_model:
         if not training_data.is_relative_to(ROOT):
             raise ValueError(f"Training data must be in the repo to publish a model: {training_data}")
-        if not allow_dirty:
-            _check_committed(training_data)
         if not overwrite:
-            _check_not_published(_s3_client(), version)
+            _check_not_published(s3_client(), version)
 
     points, null_geometry = read_points(training_data)
     raw, not_sampled, cached = load_table(points, year, training_data, use_cache=not upload_model)

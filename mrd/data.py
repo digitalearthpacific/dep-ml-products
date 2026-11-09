@@ -33,8 +33,6 @@ northness, eastness            the DEM's native WGS84 grid with central differen
                                northness and eastness are weighted by sin(slope). Replaces the prototype's
                                Horn/Sobel in EPSG:3832, which had Mercator scale error, reflected tile
                                edges and full-strength aspect on flat ground.
-elevation_std                  Removed (project decision): it was the only focal statistic, so ldn's focal
-                               statistics (ldn/raster.py:195-205, 387-435) aren't needed.
 DEM across the antimeridian    Ported ``_load_halves`` and ``_merge_geographic_halves``
                                (ldn/raster.py:214-325). Differs: a side with no DEM items (an all-ocean
                                1 degree cell) is NaN instead of an error, as is a tile with no DEM items.

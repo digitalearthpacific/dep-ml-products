@@ -1,11 +1,6 @@
 # PRD: Fiji land-cover classification v0-0-2
 
-**Naming.** `mrd` (as in `dep_s2s1_mrd`) refers to Fiji's **Mineral Resources Department**, the partner this land-cover product is built for. This is inferred from:
-- the training data's source paths (`X:\MRD_Dev\...` in `mred-tdata.geojson`);
-- the prototype's project name "minerals-model" (`notebooks/pyproject.toml`) and README ("updated minerals workflow");
-- the `quarry` class.
-
-Confirm with the team (Open question 3). Everything in this project uses `mrd`, never "gravel".
+**Naming.** `mrd` (as in `dep_s2s1_mrd`) stands for **Mineral Resource Detection** (confirmed by the user): land-cover maps for finding and monitoring mineral resources such as quarries. Everything in this project uses `mrd`, never "gravel".
 
 ## Problem
 
@@ -20,7 +15,7 @@ We need one production path: train a single model on all Fiji training data, pub
 ## Users
 
 - **Pipeline operator (DEP team):** trains the model once by hand and submits the annual Argo workflow.
-- **Fiji Mineral Resources Department (MRD):** the end client for the land-cover maps.
+- **Fiji mineral resources stakeholders:** the client for the Mineral Resource Detection (MRD) land-cover maps.
 - **Downstream consumers:** read `dep_s2s1_mrd` COGs and STAC items from `dep-public-staging`.
 
 ## Current state (observed)
@@ -51,7 +46,7 @@ We need one production path: train a single model on all Fiji training data, pub
 - **`utils.py`**
   - `load_data(bbox, year, chunks)`, `utils.py:148-250`:
     - S2 geomad: 12 bands plus 9 indices.
-    - Copernicus DEM from Planetary Computer, plus slope, northness, eastness and a 9×9 `elevation_std`.
+    - Copernicus DEM from Planetary Computer, plus slope, northness and eastness.
     - S1 geomad: `mean_vv`, `mean_vh`, `mean_vv_vh`.
     - Reads from **prod** STAC `stac.digitalearthpacific.org`.
   - `predict(model, ds)`, `utils.py:253-285`:
@@ -149,7 +144,7 @@ This plan follows <https://github.com/auspatious/ldn-lulc> (D13). Citations belo
 | Tile grid | `dep_tools.grids.grid(..., crs=PACIFIC_EPSG, return_type="GridSpec")`, `grid.tile_geobox((x, y))` (`grids.py:99-101`, `lulc.py:564-565`) | Same, at 10 m |
 | On-grid inputs (GeoMAD) | Loads its own EPSG:3832 GeoMAD by item ID, tile plus neighbours, onto the padded geobox. No reprojection, so tiles that cross 180° are safe (`lulc.py:100-134, 519-520`). | DEP `dep_s2_geomad` and `dep_s1_geomad` are on the same dep grid. Search with `search_across_180` on the **unpadded** geobox, keep only items that overlap it (not neighbours that just touch an edge), and load with `odc.stac.load(geobox=geobox)`. No pad: no S2 or S1 feature uses neighbouring pixels. |
 | WGS84 inputs (DEM) | `load_across_antimeridian`: east and west halves are loaded separately, joined in `+pm=180`, then reprojected to the geobox. A plain `stac_load(geobox=)` left about **24% of Fiji tile 066_020 empty** (`raster.py:214-256`). | Port `load_across_antimeridian` for `cop-dem-glo-30` |
-| Padding | `FOCAL_PAD` is half the largest focal window (25 px). Features are computed on the padded data, then `crop_to_geobox` (`raster.py:203-205, 438-452`). | DEM only, about 100 m (at least 3 GLO-30 pixels), searched and loaded on the padded area so terrain gradients at tile edges use real neighbours. Terrain is computed on the native DEM grid, then reprojected onto the unpadded geobox, which is the crop. No focal statistics: `elevation_std` was dropped. |
+| Padding | `FOCAL_PAD` is half the largest focal window (25 px). Features are computed on the padded data, then `crop_to_geobox` (`raster.py:203-205, 438-452`). | DEM only, about 100 m (at least 3 GLO-30 pixels), searched and loaded on the padded area so terrain gradients at tile edges use real neighbours. Terrain is computed on the native DEM grid, then reprojected onto the unpadded geobox, which is the crop. No focal statistics. |
 | Feature check | `do_prediction` fails if the dataset's features differ from `model.feature_names_in_` (`lulc.py:209-213`) | Same (FR4) |
 | Model storage | One `.joblib` under `models/<v>/`, uploaded with boto3, downloaded over **HTTPS** with `requests` and cached (`lulc.py:418-454`). No metadata file. | Same download path, plus `metadata.json` (an addition) |
 | Version | Several constants (`utils.py:93-100`) | One `VERSION` (D1) |
@@ -199,7 +194,7 @@ Not adopted from ldn-lulc:
   - DEM: a ported `load_across_antimeridian` (ldn `raster.py:214-256`) on Planetary Computer `cop-dem-glo-30`, searched and loaded on a padded area. A side or tile with no DEM items is NaN, not an error.
   - Terrain (`elevation`, `slope`, `northness`, `eastness`) is computed on the native DEM grid, then reprojected onto `geobox`.
   - The lon/lat bbox path, the module-level `BBOX`, and the import-time training-data read are removed.
-- **FR3: no edge artefacts.** Only the DEM is padded: about 100 m, at least 3 GLO-30 pixels, enough for the terrain gradient. There are no focal statistics (`elevation_std` was dropped), and S2/S1 features are per pixel.
+- **FR3: no edge artefacts.** Only the DEM is padded: about 100 m, at least 3 GLO-30 pixels, enough for the terrain gradient. There are no focal statistics, and S2/S1 features are per pixel.
 - **FR4: one feature list.** Features are `load_data`'s data variables. `predict` selects by `model.feature_names_in_` and raises a clear error naming any missing or extra feature.
 - **FR5: training.** `mrd train [--year 2022] [--version] [--training-data data/mred-tdata.geojson]`:
   - drops null-geometry points and reprojects to EPSG:3832;
@@ -352,7 +347,7 @@ All tasks are done on the `productionise` branch, which branches off `will-run`.
 - Workflow YAML.
 - Post-processing.
 - Gap-filling.
-**Surfaces touched:** `mrd/classify.py`, `mrd/cli.py`, `Dockerfile`, `src/`, `models/`, `notebooks/Load_ML_Mosaic.ipynb`, `notebooks/Test_ML_Mosaic.ipynb`, `notebooks/2-prediction.ipynb`
+**Surfaces touched:** `mrd/classify.py`, `mrd/cli.py`, `mrd/aws.py`, `mrd/train.py`, `mrd/__init__.py`, `tests/test_classify.py`, `tests/test_train.py`, `pyproject.toml`, `uv.lock`, `Dockerfile`, `.dockerignore`, `src/`, `models/`, `notebooks/Load_ML_Mosaic.ipynb`, `notebooks/Test_ML_Mosaic.ipynb`, `notebooks/2-prediction.ipynb`, `docs/prd/fiji-landcover-0-0-2.md`
 **Interfaces:**
 - `mrd run --tile-id 66,20 --year 2022 [--version 0-0-2] [--model-path <url>] [--overwrite]` writes `dep_s2s1_mrd/0-0-2/066/020/2022/dep_s2s1_mrd_066_020_2022_{class,proba}.tif` plus `.stac-item.json`.
 - `mrd print-tasks --years 2017-2024 --regions FJ` prints a JSON list.
@@ -366,7 +361,7 @@ All tasks are done on the `productionise` branch, which branches off `will-run`.
 **Depends on:** T2, T3
 **In scope:**
 - `git mv workflow/ml-gravel-annual-0-0-1.yaml workflow/ml-mrd-annual.yaml`, then apply FR10.
-- Set resources from a measured single-tile run (NFR3).
+- Set resources from a measured single-tile run (NFR3). Initial estimate in the workflow: 32Gi/8 CPU (unmeasured; re-measure).
 - Rewrite the README:
   - what MRD stands for;
   - how to train;
@@ -387,7 +382,6 @@ All tasks are done on the `productionise` branch, which branches off `will-run`.
 
 1. **Training-data swap:** should `MRD_dissagregated_32.geojson` (TODO at `notebooks/utils.py:57`) replace `mred-tdata.geojson` in a later version?
 2. **Minimum probability:** adopt ldn's rule that `class` is nodata where `proba` < 30%? Not in scope for 0-0-2 unless decided.
-3. **MRD acronym:** confirm "Mineral Resources Department (Fiji)".
 4. **DEP S2 gap around 180°:** ask DEP to fix `dep_s2_geomad` coverage around the antimeridian (see Research findings).
 
 Resolved:
@@ -398,6 +392,7 @@ Resolved:
 - asset names `class`/`proba` (D8);
 - dep grid, as in 0-0-1 (D15);
 - read from prod, write to staging as a test, then prod (D16).
+- MRD = Mineral Resource Detection (confirmed by the user).
 
 ## Sources
 
