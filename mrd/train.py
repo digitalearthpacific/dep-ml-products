@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 # Relative to the current directory: run `mrd train` from the repo root.
 TRAINING_DATA = Path("data/mred-tdata.geojson")
 MODELS_DIR = Path("data/models")
+# Sampled features per version, tile and year, reused by later runs. Delete them to resample, e.g. after changing
+# the training data or the features.
+FEATURES_DIR = Path("data/features")
 
 CLASS_COLUMN = "lulc_code"
 # Small chunks so only the chunks containing points are read. Values don't depend on chunk size: S2 and S1 load on
@@ -52,7 +55,7 @@ def read_points(path: Path) -> tuple[gpd.GeoDataFrame, int]:
     return points, int((~has_geometry).sum())
 
 
-def build_table(points: gpd.GeoDataFrame, year: int) -> tuple[pd.DataFrame, int]:
+def build_table(points: gpd.GeoDataFrame, year: int, version: str = VERSION) -> tuple[pd.DataFrame, int]:
     """Features at every point, loading the Fiji tiles (fiji_tiles) that contain points, and the number of points
     that couldn't be sampled.
 
@@ -60,7 +63,15 @@ def build_table(points: gpd.GeoDataFrame, year: int) -> tuple[pd.DataFrame, int]
     table keeps points with NaN features; see drop_unobserved.
     """
     tables = []
-    for tile in fiji_tiles():
+    tiles = fiji_tiles()
+    for i, tile in enumerate(tiles, 1):
+        logger.info(f"Tile {i}/{len(tiles)}: {tile}")
+        # Indexed by the points' index, with the class, so cached rows match the points they came from.
+        cache = FEATURES_DIR / f"features_{version}_{tile.replace(',', '_')}_{year}.csv"
+        if cache.exists():
+            tables.append(pd.read_csv(cache, index_col=0))
+            logger.info(f"    Loaded cached features from {cache}")
+            continue
         geobox = PACIFIC_GRID_10.tile_geobox(tile_index(tile))
         tile_points = points[points.within(geobox.extent.geom)]
         if tile_points.empty:
@@ -70,9 +81,11 @@ def build_table(points: gpd.GeoDataFrame, year: int) -> tuple[pd.DataFrame, int]
         except NoDataError as e:
             logger.warning(f"Skipping {len(tile_points)} points in tile {tile}: {e}")
             continue
-        features = sample_points(ds, tile_points)
-        logger.info(f"Sampled {len(features)} of {len(tile_points)} points in tile {tile}")
-        tables.append(features.assign(**{CLASS_COLUMN: points.loc[features.index, CLASS_COLUMN]}))
+        features = sample_points(ds, tile_points).assign(**{CLASS_COLUMN: tile_points[CLASS_COLUMN]})
+        logger.info(f"    Sampled {len(features)} of {len(tile_points)} points")
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        features.to_csv(cache)
+        tables.append(features)
     table = pd.concat(tables).sort_index()[TABLE_COLUMNS] if tables else pd.DataFrame(columns=TABLE_COLUMNS)
     not_sampled = len(points) - len(table)
     # Same as predict: sklearn rejects inf.
@@ -125,7 +138,7 @@ def train(
             raise FileExistsError(f"Already published (use --overwrite to replace): {existing}")
 
     points, null_geometry = read_points(training_data)
-    raw, not_sampled = build_table(points, year)
+    raw, not_sampled = build_table(points, year, version)
     table = drop_unobserved(raw)
     counts = {
         "input": len(points) + null_geometry,

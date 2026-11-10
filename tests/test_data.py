@@ -21,7 +21,7 @@ from shapely.geometry import Point
 from sklearn.ensemble import RandomForestClassifier
 
 import mrd.data
-from mrd import NODATA, tile_index
+from mrd import NODATA
 from mrd.data import (
     FEATURES,
     INDICES,
@@ -238,6 +238,10 @@ def check_network() -> None:
 
     from mrd import DEP_CATALOG
 
+    tiles = fiji_tiles()
+    assert len(tiles) == 27 and {"62,27", "66,20", "67,16"} <= set(tiles), tiles  # Rotuma, across 180, Lau
+    print(f"fiji_tiles: {len(tiles)} tiles")
+
     # Tile 66,21 around 16.9 S, columns 102-614 spanning 180 at column ~358. DEP's S2 geomad has no data here.
     window = PACIFIC_GRID_10.tile_geobox((66, 21))[812:1068, 102:614]
     client = Client.open(DEP_CATALOG)
@@ -270,15 +274,15 @@ def check_network() -> None:
     print("Network checks passed")
 
 
+def test_fiji_tiles_format(monkeypatch):
+    monkeypatch.setattr(
+        mrd.data, "get_tiles", lambda **kwargs: iter([((66, 20), None), ((9, 1), None), ((10, 1), None)])
+    )
+    assert fiji_tiles() == ["9,1", "10,1", "66,20"]
+
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["network"]:
         check_network()
     else:
         sys.exit(pytest.main([__file__, "-q"]))
-
-
-def test_fiji_tiles():
-    tiles = fiji_tiles()
-    assert len(tiles) == 84 and tiles == sorted(tiles, key=tile_index)
-    assert {"63,20", "66,20", "68,27"} <= set(tiles)  # across 180 to the Lau group
-    assert "59,15" not in tiles  # outside the bounds

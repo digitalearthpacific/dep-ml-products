@@ -82,7 +82,7 @@ argo submit workflow/ml-mrd-annual.yaml -p image-tag=<tag> -p years=2022 -p limi
 - `image-tag` is required. Left unset, pods fail with `ErrImagePull`.
 - CI publishes images only for `main`, `aws` and releases, so a tag must come from one of those.
 - The model for `version` must be published first (`mrd train`); otherwise each task fails loading it.
-- Fiji for 8 years is 672 tasks.
+- Fiji for 8 years is 216 tasks (27 tiles).
 - Pod resources (32Gi, 8 CPU) are an unmeasured estimate. Re-set them from a measured single-tile run.
 
 ## Versions

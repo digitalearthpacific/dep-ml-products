@@ -50,7 +50,7 @@ def test_read_points(tmp_path):
         t.read_points(path)
 
 
-def test_build_table(monkeypatch):
+def test_build_table(monkeypatch, tmp_path):
     points = _points(
         [
             _inside(0.2, 0.2),
@@ -76,6 +76,7 @@ def test_build_table(monkeypatch):
 
     monkeypatch.setattr(t, "load_data", load_data)
     monkeypatch.setattr(t, "fiji_tiles", lambda: ["62,20", "63,20", "64,20"])
+    monkeypatch.setattr(t, "FEATURES_DIR", tmp_path)
     table, not_sampled = t.build_table(points, 2022)
     # Point 12 is on the tile's west edge, 13 in a tile without data, 14 outside the Fiji tiles: none sampled.
     assert not_sampled == 3
@@ -86,6 +87,13 @@ def test_build_table(monkeypatch):
     assert table.slope.isna().all()  # inf -> NaN
     used = t.drop_unobserved(table)
     assert list(used.index) == [11]
+
+    # A second run reuses the cached tile: same table, and only the tile without data is loaded again.
+    loaded.clear()
+    cached, _ = t.build_table(points, 2022)
+    assert loaded == [PACIFIC_GRID_10.tile_geobox((64, 20))]
+    pd.testing.assert_frame_equal(cached, table, check_dtype=False)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["features_0-0-2_63_20_2022.csv"]
 
 
 def test_drop_unobserved_keeps_s1_gaps():
@@ -113,7 +121,7 @@ def test_train_requires_every_class(monkeypatch, tmp_path):
     data = tmp_path / "points.geojson"
     data.write_text("{}")
     monkeypatch.setattr(t, "read_points", lambda path: (_points([(0, 0)], [1]), 0))
-    monkeypatch.setattr(t, "build_table", lambda points, year: (_table(), 0))
+    monkeypatch.setattr(t, "build_table", lambda points, year, version: (_table(), 0))
     with pytest.raises(ValueError, match="No training points left for classes"):
         t.train(training_data=data, upload_model=False)
 

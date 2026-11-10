@@ -56,9 +56,9 @@ import pandas as pd
 import requests
 import xarray as xr
 from affine import Affine
-from dep_tools.grids import PACIFIC_GRID_10
+from dep_tools.grids import get_tiles
 from dep_tools.utils import bbox_across_180, search_across_180
-from odc.geo import Geometry, geom
+from odc.geo import Geometry
 from odc.geo.geobox import GeoBox, bounding_box_in_pixel_domain
 from odc.geo.xr import assign_crs, xr_coords
 from odc.stac import load as stac_load
@@ -74,7 +74,6 @@ from mrd import (
     DEM_CATALOG,
     DEM_COLLECTION,
     DEP_CATALOG,
-    FIJI_BOUNDS,
     NODATA,
     S1_COLLECTION,
     S2_COLLECTION,
@@ -103,12 +102,11 @@ DEM_PAD_METRES = 100
 
 
 def fiji_tiles() -> list[str]:
-    """dep grid tile ids ("col,row") intersecting the FIJI_BOUNDS boxes, sorted by (col, row)."""
-    tiles = set()
-    for bounds in FIJI_BOUNDS:
-        area = geom.box(*bounds, WGS84).to_crs(PACIFIC_GRID_10.crs)
-        tiles.update(idx for idx, _ in PACIFIC_GRID_10.tiles(area.boundingbox))
-    return [f"{col},{row}" for col, row in sorted(tiles)]
+    """dep grid tile ids ("col,row") intersecting Fiji's land (GADM, via dep-tools), sorted by (col, row).
+
+    Slow (about a minute and a half): dep-tools downloads GADM each call.
+    """
+    return [f"{col},{row}" for col, row in sorted(idx for idx, _ in get_tiles(resolution=10, country_codes=["FJI"]))]
 
 
 class NoDataError(Exception):
