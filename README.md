@@ -43,6 +43,16 @@ the STAC item is built by reading the written COGs back over HTTPS.
 uv sync
 ```
 
+### AWS credentials
+
+Publishing a model and writing classified tiles need credentials that can write to the output bucket. Log in with
+AWS SSO and export the profile in the shell you run `mrd` (or `make`) from:
+
+```bash
+aws sso login --profile dep-staging-admin
+export AWS_PROFILE=dep-staging-admin
+```
+
 ## Train
 
 The model is trained once, by hand, on `data/mred-tdata.geojson` (2022 labels and imagery).
@@ -63,7 +73,7 @@ Run it from the repo root. Publishing refuses to replace a model already publish
 
 ## Classify
 
-One tile locally (needs AWS credentials that can write to the output bucket):
+One tile locally (needs [AWS credentials](#aws-credentials) that can write to the output bucket):
 
 ```bash
 uv run mrd run --tile-id 64,20 --year 2022 --overwrite
