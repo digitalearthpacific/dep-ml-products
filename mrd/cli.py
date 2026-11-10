@@ -39,12 +39,11 @@ def print_tasks(
     version: str = typer.Option(VERSION, help="Output version."),
     output_bucket: str = typer.Option(OUTPUT_BUCKET),
     overwrite: bool = typer.Option(False, help="Include tasks whose output already exists."),
-    limit: int = typer.Option(None, help="Only the first N tasks, e.g. for a test run."),
 ) -> None:
     """Print the tile and year tasks as JSON for the Argo workflow."""
     from mrd.classify import print_tasks as tasks
 
-    typer.echo(tasks(years, version, output_bucket, overwrite, limit))
+    typer.echo(tasks(years, version, output_bucket, overwrite))
 
 
 @app.command()

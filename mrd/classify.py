@@ -78,7 +78,6 @@ def print_tasks(
     version: str = VERSION,
     bucket: str = OUTPUT_BUCKET,
     overwrite: bool = False,
-    limit: int | None = None,
 ) -> str:
     """The tile and year tasks as compact JSON for Argo's withParam: [{"tile-id", "year", "version"}].
 
@@ -92,8 +91,6 @@ def print_tasks(
     if not overwrite:
         existing = existing_stac_keys(bucket, version)
         tasks = [t for t in tasks if item_path(bucket, version, t["year"]).stac_path(t["tile-id"]) not in existing]
-    if limit is not None:
-        tasks = tasks[:limit]
     return json.dumps(tasks, separators=(",", ":"))
 
 
