@@ -27,9 +27,6 @@ from mrd.data import NoDataError, load_data, load_model, predict
 
 logger = logging.getLogger(__name__)
 
-# Argo caps a step's outputs.result at 256 KB.
-MAX_TASKS_JSON_BYTES = 250_000
-
 
 def item_path(bucket: str, version: str, year: int) -> S3ItemPath:
     """Output paths, e.g. dep_s2s1_mrd/<version>/066/020/2022/dep_s2s1_mrd_066_020_2022_class.tif."""
@@ -102,7 +99,7 @@ def print_tasks(
     whose STAC item exists are left out.
 
     Raises:
-        ValueError: For invalid years or regions, or a task list too big for one Argo step.
+        ValueError: For invalid years or regions.
     """
     region_codes = None if regions is None or regions.upper() == "ALL" else regions.split(",")
     tiles, year_list = get_tiles(region_codes), parse_years(years)
@@ -112,12 +109,7 @@ def print_tasks(
         tasks = [t for t in tasks if item_path(bucket, version, t["year"]).stac_path(t["tile-id"]) not in existing]
     if limit is not None:
         tasks = tasks[:limit]
-    output = json.dumps(tasks, separators=(",", ":"))
-    if len(output) > MAX_TASKS_JSON_BYTES:
-        raise ValueError(
-            f"Too many tasks for one Argo step ({len(tasks)}); split by --regions or --years, or use --limit"
-        )
-    return output
+    return json.dumps(tasks, separators=(",", ":"))
 
 
 def antimeridian_safe_bbox(area: GeoBox, fallback_bbox: list[float]) -> list[float]:

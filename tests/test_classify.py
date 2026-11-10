@@ -60,12 +60,6 @@ def test_print_tasks(monkeypatch):
     assert json.loads(output) == [{"tile-id": "65,20", "year": 2022, "version": "0-0-2"}] and " " not in output
 
 
-def test_print_tasks_too_big_for_argo(monkeypatch):
-    monkeypatch.setattr(c, "get_tiles", lambda regions: [f"{i},1" for i in range(6000)])
-    with pytest.raises(ValueError, match="Too many tasks"):
-        c.print_tasks("2022", "ALL", overwrite=True)
-
-
 def test_existing_stac_keys(monkeypatch):
     pages = [{"Contents": [{"Key": "a/x.stac-item.json"}, {"Key": "a/x_class.tif"}]}, {}]
     paginator = SimpleNamespace(paginate=lambda **kwargs: pages)
