@@ -16,7 +16,9 @@ DEM_CATALOG = "https://planetarycomputer.microsoft.com/api/stac/v1/"
 S2_COLLECTION = "dep_s2_geomad"
 S1_COLLECTION = "dep_s1_geomad"
 DEM_COLLECTION = "cop-dem-glo-30"
-TILES_URL = "https://raw.githubusercontent.com/digitalearthpacific/dep-grid/master/grid_pacific.geojson"
+# Fiji, as (west, south, east, north) boxes in degrees, one either side of 180. The dep grid tiles intersecting them
+# are trained on and classified.
+FIJI_BOUNDS = [(176.90, -21.04, 180.0, -12.46), (-180.0, -21.04, -178.23, -12.46)]
 
 # Output nodata for both the class and proba bands.
 NODATA = 255

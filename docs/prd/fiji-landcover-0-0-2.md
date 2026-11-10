@@ -117,7 +117,7 @@ Because there is a single model that needs S1 features (D11), **2025 cannot be c
 | D12 | Training uses only 2022 labels and imagery for now (`mred-tdata.geojson`). |
 | D13 | `auspatious/ldn-lulc` is the reference implementation for antimeridian handling and production processing. |
 | D14 | All work is done on the `productionise` branch, which branches off `will-run`. |
-| D15 | Tiles come from the dep grid, as in 0-0-1 (`src/run_task.py:30-37` reads dep-grid `grid_pacific.geojson`, 54 `FJ` tiles). |
+| D15 | The dep grid (`PACIFIC_GRID_10`), as in 0-0-1 (confirmed: 0-0-1's COGs match `tile_geobox` exactly). The tiles are those intersecting the Fiji bounds `[176.90, -21.04, -178.23, -12.46]`, split at 180 into two boxes (`FIJI_BOUNDS`): 84 tiles, for training and classification. This drops 7 of dep-grid's 54 `FJ` tiles (59,15 59,16 60,15 60,16 61,21 61,26 61,27). |
 | D16 | Inputs are read from prod STAC. Outputs are written to `dep-public-staging` as a test run; a later run writes to the prod bucket by changing only `--output-bucket`. |
 | D17 | For T1, index and terrain logic is checked against ldn-lulc's implementation, which is more robust, and aligned with it. |
 
@@ -202,7 +202,7 @@ Not adopted from ldn-lulc:
   - fits `RandomForestClassifier(n_estimators=500, class_weight="balanced", oob_score=True, random_state=42)` on all points, as a DataFrame so feature names are kept;
   - uploads `model.joblib` and `metrics.json` with boto3.
 - **FR6: `metrics.json` contents.** The OOB score.
-- **FR7: task list.** `mrd print-tasks --years 2017-2024 --regions FJ [--overwrite/--no-overwrite]` emits `[{"tile-id","year","version"}]`.
+- **FR7: task list.** `mrd print-tasks --years 2017-2024 [--overwrite/--no-overwrite]` emits `[{"tile-id","year","version"}]`.
   - Invalid `--years` raises an error.
   - Without `--overwrite`, tiles that already have a STAC item are dropped.
 - **FR8: per-tile classification.** `mrd run --tile-id X --year Y [--version] [--model-path] [--output-bucket dep-public-staging]`:
@@ -217,7 +217,7 @@ Not adopted from ldn-lulc:
   - If no S2 or S1 items exist for the tile and year (ocean-only, or S1 2025), log a "no data" warning naming the missing collection and exit 0 without writing.
   - Any other exception is logged and re-raised, so the pod exits non-zero.
 - **FR10: workflow.** `workflow/ml-mrd-annual.yaml`, `generateName: dep-ml-mrd-`, label `app: ml-mrd`.
-  - Workflow parameters: `version` (default `0-0-2`), `years` (default `2017-2024`), `regions` (`FJ`), `image-tag`, `overwrite`.
+  - Workflow parameters: `version` (default `0-0-2`), `years` (default `2017-2024`), `image-tag`, `overwrite`.
   - The model path is derived from `version`.
   - Steps call `mrd print-tasks` and `mrd run`.
   - A small `retryStrategy` sits on the `run` template.
@@ -238,17 +238,17 @@ Not adopted from ldn-lulc:
 ## Acceptance criteria
 
 - **AC1:** `models/0-0-2/model.joblib` and `metrics.json` exist in `dep-public-staging`. `metrics.json` has the OOB score.
-- **AC2:** In the Docker image, `mrd.data.load_model(...)` gives no sklearn version warning, and `feature_names_in_` equals `list(load_data(...).data_vars)` for any FJ tile.
+- **AC2:** In the Docker image, `mrd.data.load_model(...)` gives no sklearn version warning, and `feature_names_in_` equals `list(load_data(...).data_vars)` for any Fiji tile.
 - **AC3:** `mrd run --tile-id 66,20 --year 2022` (tile crosses 180°) writes `class` and `proba`. The DEM-derived features have no empty stripe east or west of 180° (ldn-lulc's failure mode was about 24% of this tile empty). Output pixels are nodata (255) only where S2 reflectance is NaN, which includes the upstream DEP S2 gap around 180°.
 - **AC4:** The shared edge of tiles `65,20` and `66,20` shows no seam in slope.
-- **AC5:** `mrd print-tasks --years 2017-2024 --regions FJ --overwrite` returns 54 × 8 = 432 tasks.
+- **AC5:** `mrd print-tasks --years 2017-2024 --overwrite` returns 84 × 8 = 672 tasks.
 - **AC6:** The workflow with `years=2017-2024` completes. No-data tiles exit 0 with a warning and don't count as failed.
 - **AC7:** `rg -n "0-0-1|0\.0\.1|gravel|test_model|dea_tools|dep_s1_mosaic"` over `mrd/` and `workflow/` returns nothing. `0-0-2` appears only in `mrd/__init__.py` and the workflow default.
 - **AC8:** `mrd/train.py` and `mrd/classify.py` get features only through `mrd.data.load_data` (checked by grep).
 
 ## Success measures
 
-- All 54 FJ tiles × 2017–2024 are written under `0-0-2`.
+- All 84 Fiji tiles × 2017–2024 are written under `0-0-2` (ocean-only tiles exit with no data).
 - Spatial-CV macro-F1 is reported alongside OOB.
 - The team accepts a visual QA of known quarry and mangrove sites.
 
@@ -341,7 +341,7 @@ All tasks are done on the `productionise` branch, which branches off `will-run`.
 **Surfaces touched:** `mrd/classify.py`, `mrd/cli.py`, `mrd/aws.py`, `mrd/train.py`, `mrd/__init__.py`, `tests/test_classify.py`, `tests/test_train.py`, `pyproject.toml`, `uv.lock`, `Dockerfile`, `.dockerignore`, `src/`, `models/`, `notebooks/Load_ML_Mosaic.ipynb`, `notebooks/Test_ML_Mosaic.ipynb`, `notebooks/2-prediction.ipynb`, `docs/prd/fiji-landcover-0-0-2.md`
 **Interfaces:**
 - `mrd run --tile-id 66,20 --year 2022 [--version 0-0-2] [--model-path <url>] [--overwrite]` writes `dep_s2s1_mrd/0-0-2/066/020/2022/dep_s2s1_mrd_066_020_2022_{class,proba}.tif` plus `.stac-item.json`.
-- `mrd print-tasks --years 2017-2024 --regions FJ` prints a JSON list.
+- `mrd print-tasks --years 2017-2024` prints a JSON list.
 **Verification:**
 - AC3, AC4, AC5, AC7 and AC8.
 - `mrd run` for a 2025 tile exits 0 with a "no S1 data" warning.

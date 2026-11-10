@@ -26,8 +26,6 @@ spec:
         value: "0-0-2" # Output version; mrd run loads the model published for it
       - name: years
         value: "2017-2024" # "2022", "2017-2024" or "2017,2020". S1 geomad has no 2025 yet.
-      - name: regions
-        value: "FJ" # Comma-separated country codes, or "ALL"
       - name: limit
         value: "" # e.g. "3" for a test run; empty for all tasks
       - name: image-name
@@ -71,7 +69,6 @@ spec:
           - >-
             mrd print-tasks
             --years "{{workflow.parameters.years}}"
-            --regions "{{workflow.parameters.regions}}"
             --version "{{workflow.parameters.version}}"
             --output-bucket "{{workflow.parameters.output-bucket}}"
             {{workflow.parameters.overwrite}}

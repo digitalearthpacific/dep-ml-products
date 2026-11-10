@@ -21,7 +21,7 @@ from shapely.geometry import Point
 from sklearn.ensemble import RandomForestClassifier
 
 import mrd.data
-from mrd import NODATA
+from mrd import NODATA, tile_index
 from mrd.data import (
     FEATURES,
     INDICES,
@@ -36,6 +36,7 @@ from mrd.data import (
     _search,
     _shift_to_pm180,
     add_indices,
+    fiji_tiles,
     load_data,
     load_dem_terrain,
     load_model,
@@ -274,3 +275,10 @@ if __name__ == "__main__":
         check_network()
     else:
         sys.exit(pytest.main([__file__, "-q"]))
+
+
+def test_fiji_tiles():
+    tiles = fiji_tiles()
+    assert len(tiles) == 84 and tiles == sorted(tiles, key=tile_index)
+    assert {"63,20", "66,20", "68,27"} <= set(tiles)  # across 180 to the Lau group
+    assert "59,15" not in tiles  # outside the bounds

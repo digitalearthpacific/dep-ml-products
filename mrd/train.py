@@ -13,12 +13,12 @@ import joblib
 import numpy as np
 import pandas as pd
 from dep_tools.aws import object_exists
-from dep_tools.grids import PACIFIC_GRID_10  # Same grid as v0-0-1: its COGs match tile_geobox exactly.
+from dep_tools.grids import PACIFIC_GRID_10  # Same grid as v0-0-1
 from sklearn.ensemble import RandomForestClassifier
 
 from mrd import CLASSES, MODEL_PREFIX, OUTPUT_BUCKET, VERSION, tile_index
 from mrd.aws import s3_client
-from mrd.data import FEATURES, S2_REFLECTANCE, NoDataError, load_data, sample_points
+from mrd.data import FEATURES, S2_REFLECTANCE, NoDataError, fiji_tiles, load_data, sample_points
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ TRAINING_CHUNKS = {"x": 512, "y": 512}
 # FR5. n_jobs isn't a hyperparameter: it's passed separately and cleared before saving, so classification's
 # per-block predict_proba doesn't start its own threads inside dask.
 HYPERPARAMETERS = {"n_estimators": 500, "class_weight": "balanced", "oob_score": True, "random_state": 42}
-TABLE_COLUMNS = ["tile", CLASS_COLUMN, *FEATURES]
+TABLE_COLUMNS = [CLASS_COLUMN, *FEATURES]
 
 
 def read_points(path: Path) -> tuple[gpd.GeoDataFrame, int]:
@@ -52,34 +52,29 @@ def read_points(path: Path) -> tuple[gpd.GeoDataFrame, int]:
     return points, int((~has_geometry).sum())
 
 
-# TODO: Get IDs from Fiji geom, not training data.
-def tile_ids(points: gpd.GeoDataFrame) -> pd.Series:
-    """The dep grid tile of each point, as "col,row"."""
-    indices = (PACIFIC_GRID_10.pt2idx(x, y) for x, y in zip(points.geometry.x, points.geometry.y))
-    return pd.Series([f"{i.x},{i.y}" for i in indices], index=points.index)
-
-
 def build_table(points: gpd.GeoDataFrame, year: int) -> tuple[pd.DataFrame, int]:
-    """Features at every point, tile by tile, and the number of points that couldn't be sampled.
+    """Features at every point, loading the Fiji tiles (fiji_tiles) that contain points, and the number of points
+    that couldn't be sampled.
 
-    Points in a tile without S2 or S1 data, or exactly on a tile edge, aren't sampled. The table keeps points with
-    NaN features; see drop_unobserved.
+    Points outside the Fiji tiles, in a tile without S2 or S1 data, or exactly on a tile edge, aren't sampled. The
+    table keeps points with NaN features; see drop_unobserved.
     """
-    tiles = tile_ids(points)
-    tables, not_sampled = [], 0
-    for tile in sorted(tiles.unique(), key=tile_index):
-        tile_points = points[tiles == tile]
+    tables = []
+    for tile in fiji_tiles():
+        geobox = PACIFIC_GRID_10.tile_geobox(tile_index(tile))
+        tile_points = points[points.within(geobox.extent.geom)]
+        if tile_points.empty:
+            continue
         try:
-            ds = load_data(PACIFIC_GRID_10.tile_geobox(tile_index(tile)), year, TRAINING_CHUNKS)
+            ds = load_data(geobox, year, TRAINING_CHUNKS)
         except NoDataError as e:
             logger.warning(f"Skipping {len(tile_points)} points in tile {tile}: {e}")
-            not_sampled += len(tile_points)
             continue
         features = sample_points(ds, tile_points)
         logger.info(f"Sampled {len(features)} of {len(tile_points)} points in tile {tile}")
-        not_sampled += len(tile_points) - len(features)
-        tables.append(features.assign(tile=tile, **{CLASS_COLUMN: points.loc[features.index, CLASS_COLUMN]}))
+        tables.append(features.assign(**{CLASS_COLUMN: points.loc[features.index, CLASS_COLUMN]}))
     table = pd.concat(tables).sort_index()[TABLE_COLUMNS] if tables else pd.DataFrame(columns=TABLE_COLUMNS)
+    not_sampled = len(points) - len(table)
     # Same as predict: sklearn rejects inf.
     table[FEATURES] = table[FEATURES].replace([np.inf, -np.inf], np.nan)
     return table, not_sampled

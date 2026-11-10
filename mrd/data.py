@@ -56,8 +56,9 @@ import pandas as pd
 import requests
 import xarray as xr
 from affine import Affine
+from dep_tools.grids import PACIFIC_GRID_10
 from dep_tools.utils import bbox_across_180, search_across_180
-from odc.geo import Geometry
+from odc.geo import Geometry, geom
 from odc.geo.geobox import GeoBox, bounding_box_in_pixel_domain
 from odc.geo.xr import assign_crs, xr_coords
 from odc.stac import load as stac_load
@@ -68,7 +69,16 @@ from shapely.geometry import box, shape
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.exceptions import InconsistentVersionWarning
 
-from mrd import CLASSES, DEM_CATALOG, DEM_COLLECTION, DEP_CATALOG, NODATA, S1_COLLECTION, S2_COLLECTION
+from mrd import (
+    CLASSES,
+    DEM_CATALOG,
+    DEM_COLLECTION,
+    DEP_CATALOG,
+    FIJI_BOUNDS,
+    NODATA,
+    S1_COLLECTION,
+    S2_COLLECTION,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +100,15 @@ WGS84 = "EPSG:4326"
 PM180_CRS = "+proj=longlat +datum=WGS84 +pm=180"
 # DEM margin around the target area, so terrain gradients at its edge use real neighbours (about 3 GLO-30 pixels).
 DEM_PAD_METRES = 100
+
+
+def fiji_tiles() -> list[str]:
+    """dep grid tile ids ("col,row") intersecting the FIJI_BOUNDS boxes, sorted by (col, row)."""
+    tiles = set()
+    for bounds in FIJI_BOUNDS:
+        area = geom.box(*bounds, WGS84).to_crs(PACIFIC_GRID_10.crs)
+        tiles.update(idx for idx, _ in PACIFIC_GRID_10.tiles(area.boundingbox))
+    return [f"{col},{row}" for col, row in sorted(tiles)]
 
 
 class NoDataError(Exception):

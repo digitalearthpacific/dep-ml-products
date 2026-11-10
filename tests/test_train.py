@@ -50,18 +50,22 @@ def test_read_points(tmp_path):
         t.read_points(path)
 
 
-def test_tile_ids():
-    assert list(t.tile_ids(_points([_inside(0.5, 0.5)], [1]))) == ["63,20"]
-
-
 def test_build_table(monkeypatch):
     points = _points(
-        [_inside(0.2, 0.2), _inside(0.7, 0.7), _inside(0.0, 0.5), _inside(0.5, 0.5, TILE.translate_pix(9600, 0))],
-        [1, 2, 3, 4],
+        [
+            _inside(0.2, 0.2),
+            _inside(0.7, 0.7),
+            _inside(0.0, 0.5),
+            _inside(0.5, 0.5, TILE.translate_pix(9600, 0)),
+            _inside(0.5, 0.5, TILE.translate_pix(19200, 0)),
+        ],
+        [1, 2, 3, 4, 5],
     )
-    points.index = [10, 11, 12, 13]
+    points.index = [10, 11, 12, 13, 14]
+    loaded = []
 
     def load_data(geobox, year, chunks):
+        loaded.append(geobox)
         if geobox == PACIFIC_GRID_10.tile_geobox((64, 20)):
             raise NoDataError("no S1")
         ds = _features(geobox)
@@ -71,28 +75,17 @@ def test_build_table(monkeypatch):
         return ds
 
     monkeypatch.setattr(t, "load_data", load_data)
+    monkeypatch.setattr(t, "fiji_tiles", lambda: ["62,20", "63,20", "64,20"])
     table, not_sampled = t.build_table(points, 2022)
-    # Point 12 is on the tile's west edge (not sampled); point 13 is in a tile without data.
-    assert not_sampled == 2
+    # Point 12 is on the tile's west edge, 13 in a tile without data, 14 outside the Fiji tiles: none sampled.
+    assert not_sampled == 3
+    # 62,20 has no points, so it isn't loaded.
+    assert loaded == [PACIFIC_GRID_10.tile_geobox((63, 20)), PACIFIC_GRID_10.tile_geobox((64, 20))]
     assert list(table.columns) == t.TABLE_COLUMNS and list(table.index) == [10, 11]
-    assert table.tile.tolist() == ["63,20", "63,20"] and table[t.CLASS_COLUMN].tolist() == [1, 2]
+    assert table[t.CLASS_COLUMN].tolist() == [1, 2]
     assert table.slope.isna().all()  # inf -> NaN
     used = t.drop_unobserved(table)
     assert list(used.index) == [11]
-
-
-def test_tiles_in_numeric_order(monkeypatch):
-    calls = []
-
-    def load_data(geobox, year, chunks):
-        calls.append(geobox)
-        raise NoDataError("none")
-
-    monkeypatch.setattr(t, "tile_ids", lambda points: pd.Series(["10,1", "9,1"], index=points.index))
-    monkeypatch.setattr(t, "load_data", load_data)
-    _, not_sampled = t.build_table(_points([(0, 0), (1, 1)], [1, 2]), 2022)
-    assert calls == [PACIFIC_GRID_10.tile_geobox((9, 1)), PACIFIC_GRID_10.tile_geobox((10, 1))]
-    assert not_sampled == 2
 
 
 def test_drop_unobserved_keeps_s1_gaps():
@@ -102,13 +95,12 @@ def test_drop_unobserved_keeps_s1_gaps():
     assert list(t.drop_unobserved(table).index) == [1, 2]
 
 
-def _table(n_per_class: int = 12, n_tiles: int = 6) -> pd.DataFrame:
+def _table(n_per_class: int = 12) -> pd.DataFrame:
     rng = np.random.default_rng(0)
     codes = np.repeat([1, 2, 3], n_per_class)
     table = pd.DataFrame(rng.random((len(codes), len(FEATURES))), columns=FEATURES)
     table[FEATURES[0]] += codes  # separable enough to learn
     table.insert(0, t.CLASS_COLUMN, codes)
-    table.insert(0, "tile", [f"{i % n_tiles},1" for i in range(len(codes))])
     return table
 
 

@@ -9,7 +9,6 @@ import logging
 from pathlib import Path
 
 import dask
-import geopandas as gpd
 from antimeridian import fix_shape
 from botocore.exceptions import ClientError
 from dep_tools.aws import object_exists, write_stac_s3
@@ -21,9 +20,9 @@ from dep_tools.writers import AwsDsCogWriter
 from odc.geo.geobox import GeoBox
 from pystac import Link
 
-from mrd import DATASET_ID, OUTPUT_BUCKET, SENSOR, TILES_URL, VERSION, collection_url_root, model_url, tile_index
+from mrd import DATASET_ID, OUTPUT_BUCKET, SENSOR, VERSION, collection_url_root, model_url, tile_index
 from mrd.aws import s3_client
-from mrd.data import NoDataError, load_data, load_model, predict
+from mrd.data import NoDataError, fiji_tiles, load_data, load_model, predict
 
 logger = logging.getLogger(__name__)
 
@@ -40,17 +39,6 @@ def item_path(bucket: str, version: str, year: int) -> S3ItemPath:
         # Given explicitly, so dep-tools doesn't look up the bucket's region over the network.
         full_path_prefix=f"https://{bucket}.s3.us-west-2.amazonaws.com/",
     )
-
-
-def get_tiles(regions: list[str] | None) -> list[str]:
-    """dep grid tile ids ("col,row") for country codes such as ["FJ"], or every tile for None, sorted by (col, row)."""
-    tiles = gpd.read_file(TILES_URL).astype({"tile_id": str, "country_code": str})
-    if regions is not None:
-        unknown = set(regions) - set(tiles.country_code)
-        if unknown:
-            raise ValueError(f"No dep grid tiles for regions {sorted(unknown)}")
-        tiles = tiles[tiles.country_code.isin(regions)]
-    return sorted(tiles.tile_id, key=tile_index)
 
 
 def parse_years(years: str) -> list[int]:
@@ -87,7 +75,6 @@ def existing_stac_keys(bucket: str, version: str) -> set[str]:
 
 def print_tasks(
     years: str,
-    regions: str | None = "FJ",
     version: str = VERSION,
     bucket: str = OUTPUT_BUCKET,
     overwrite: bool = False,
@@ -95,14 +82,12 @@ def print_tasks(
 ) -> str:
     """The tile and year tasks as compact JSON for Argo's withParam: [{"tile-id", "year", "version"}].
 
-    regions is a comma-separated list of country codes, or "ALL" (or None) for every tile. Without overwrite, tasks
-    whose STAC item exists are left out.
+    The tiles are the Fiji tiles (fiji_tiles). Without overwrite, tasks whose STAC item exists are left out.
 
     Raises:
-        ValueError: For invalid years or regions.
+        ValueError: For invalid years.
     """
-    region_codes = None if regions is None or regions.upper() == "ALL" else regions.split(",")
-    tiles, year_list = get_tiles(region_codes), parse_years(years)
+    tiles, year_list = fiji_tiles(), parse_years(years)
     tasks = [{"tile-id": tile, "year": year, "version": version} for tile in tiles for year in year_list]
     if not overwrite:
         existing = existing_stac_keys(bucket, version)

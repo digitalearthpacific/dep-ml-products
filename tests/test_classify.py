@@ -4,7 +4,6 @@ import json
 import logging
 from types import SimpleNamespace
 
-import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pytest
@@ -14,7 +13,6 @@ from botocore.exceptions import ClientError
 from dep_tools.grids import PACIFIC_GRID_10
 from odc.geo.xr import assign_crs, to_cog, xr_coords
 from rasterio.io import MemoryFile
-from shapely.geometry import box
 from sklearn.ensemble import RandomForestClassifier
 
 import mrd.classify as c
@@ -31,32 +29,16 @@ def test_parse_years():
             c.parse_years(bad)
 
 
-def _grid(monkeypatch, rows: list[tuple[str, str]]):
-    frame = gpd.GeoDataFrame(
-        {"tile_id": [t for t, _ in rows], "country_code": [r for _, r in rows]},
-        geometry=[box(0, 0, 1, 1)] * len(rows),
-    )
-    monkeypatch.setattr(c.gpd, "read_file", lambda url: frame)
-
-
-def test_get_tiles(monkeypatch):
-    _grid(monkeypatch, [("10,1", "FJ"), ("9,1", "FJ"), ("9,2", "TO")])
-    assert c.get_tiles(["FJ"]) == ["9,1", "10,1"]
-    assert c.get_tiles(None) == ["9,1", "9,2", "10,1"]
-    with pytest.raises(ValueError, match="XX"):
-        c.get_tiles(["XX"])
-
-
 def test_print_tasks(monkeypatch):
-    _grid(monkeypatch, [("65,20", "FJ"), ("66,20", "FJ"), ("1,1", "TO")])
+    monkeypatch.setattr(c, "fiji_tiles", lambda: ["65,20", "66,20"])
     done = c.item_path("b", "0-0-2", 2022).stac_path("66,20")
     monkeypatch.setattr(c, "existing_stac_keys", lambda bucket, version: {done})
-    tasks = json.loads(c.print_tasks("2022-2023", "FJ", "0-0-2", "b", overwrite=False, limit=None))
+    tasks = json.loads(c.print_tasks("2022-2023", "0-0-2", "b", overwrite=False, limit=None))
     assert {(t["tile-id"], t["year"]) for t in tasks} == {("65,20", 2022), ("65,20", 2023), ("66,20", 2023)}
     assert all(t["version"] == "0-0-2" for t in tasks)
-    all_tasks = json.loads(c.print_tasks("2022-2023", "ALL", "0-0-2", "b", overwrite=True, limit=None))
-    assert len(all_tasks) == 6
-    output = c.print_tasks("2022", "FJ", "0-0-2", "b", overwrite=True, limit=1)
+    all_tasks = json.loads(c.print_tasks("2022-2023", "0-0-2", "b", overwrite=True, limit=None))
+    assert len(all_tasks) == 4
+    output = c.print_tasks("2022", "0-0-2", "b", overwrite=True, limit=1)
     assert json.loads(output) == [{"tile-id": "65,20", "year": 2022, "version": "0-0-2"}] and " " not in output
 
 

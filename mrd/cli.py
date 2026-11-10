@@ -36,7 +36,6 @@ def train(
 @app.command("print-tasks")
 def print_tasks(
     years: str = typer.Option(..., help='"2022", "2017-2024" or "2017,2020".'),
-    regions: str = typer.Option("FJ", help='Comma-separated country codes, or "ALL".'),
     version: str = typer.Option(VERSION, help="Output version."),
     output_bucket: str = typer.Option(OUTPUT_BUCKET),
     overwrite: bool = typer.Option(False, help="Include tasks whose output already exists."),
@@ -45,7 +44,7 @@ def print_tasks(
     """Print the tile and year tasks as JSON for the Argo workflow."""
     from mrd.classify import print_tasks as tasks
 
-    typer.echo(tasks(years, regions, version, output_bucket, overwrite, limit))
+    typer.echo(tasks(years, version, output_bucket, overwrite, limit))
 
 
 @app.command()
