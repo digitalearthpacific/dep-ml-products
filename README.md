@@ -94,8 +94,7 @@ argo submit workflow/ml-mrd-annual.yaml -p years=2022            # one year
 
 - Pods run the image tagged with the workflow's `version` (e.g. `ghcr.io/digitalearthpacific/dep-ml-products:0-0-2`).
   CI pushes that tag (plus `git describe` and `latest` tags) when `main` is pushed or a GitHub release is published
-  (e.g. tag `0.0.2`), so merge or release before running. The `version` tag is rebuilt on every push there; the
-  `git describe` tag pins an exact build.
+  (e.g. tag `0.0.2`), so merge or release before running. The `version` tag is rebuilt on every push there; the `git describe` tag pins an exact build.
 - The model for `version` must be published first (`mrd train`); otherwise each task fails loading it.
 - Fiji for 8 years is 216 tasks (27 tiles).
 - Pod resources (32Gi, 8 CPU) are an unmeasured estimate. Re-set them from a measured single-tile run.
@@ -124,3 +123,14 @@ uv run python tests/test_data.py network    # loads real data across the antimer
 
 Will is in comms with MRD for newer quarries and tenements data.
 https://www.lands.gov.fj/
+
+
+# TODO: 
+
+- Add a new release 0.0.2. This will trigger the image build/push workflow.
+- Update STAC collection. Should this be for staging and prod? https://github.com/digitalearthpacific/dep-stac/blob/main/dep_collections/dep_s2s1_mrd.py
+- write a STAC-Geoparquet? link from collection. Maybe not needed.
+- Run on prod DEP?
+- Index to pgstac for dep-stac.
+- https://github.com/digitalearthpacific/dep-flux/blob/main/workflows/base/templates/stac-collection-sync.yaml
+- https://github.com/digitalearthpacific/dep-flux/blob/main/workflows/base/templates/stac-items-ingest.yaml
