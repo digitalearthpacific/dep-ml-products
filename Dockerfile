@@ -1,5 +1,6 @@
-# linux/amd64 only: fiona (from dep-tools) has no ARM Linux wheel. GDAL comes bundled in the rasterio and fiona wheels.
-FROM --platform=linux/amd64 python:3.13-slim AS base
+# Build for linux/amd64 only (`make build` passes --platform linux/amd64; CI runners are amd64): fiona (from dep-tools)
+# has no ARM Linux wheel. GDAL comes bundled in the rasterio and fiona wheels.
+FROM python:3.13-slim AS base
 
 # git: uv fetches dep-tools from GitHub.
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
