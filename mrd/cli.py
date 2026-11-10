@@ -22,7 +22,7 @@ def train(
     year: int = typer.Option(2022, help="Year of imagery to sample at the training points."),
     version: str = typer.Option(VERSION, help="Model version, the S3 folder under the model prefix."),
     training_data: Path = typer.Option(None, help="Training points (GeoJSON). Default: data/mred-tdata.geojson."),
-    upload: bool = typer.Option(True, help="Upload model.joblib and metadata.json to S3."),
+    upload: bool = typer.Option(True, help="Upload model.joblib and metrics.json to S3."),
     overwrite: bool = typer.Option(False, help="Replace an already published model version."),
 ) -> None:
     """Train the model on all training points and publish it."""

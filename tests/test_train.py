@@ -11,7 +11,6 @@ from odc.geo.xr import assign_crs, xr_coords
 from shapely.geometry import Point
 
 import mrd.train as t
-from mrd import CLASSES
 from mrd.data import FEATURES, NoDataError
 
 TILE = PACIFIC_GRID_10.tile_geobox((63, 20))
@@ -119,51 +118,17 @@ def test_cross_validate_is_deterministic():
     table = _table()
     first, second = t.cross_validate(table), t.cross_validate(table)
     assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
-    for name, groups in [("spatial", "tile"), ("random", None)]:
+    for name in ["spatial", "random"]:
         report = first[name]
-        assert report["groups"] == groups and report["n_splits"] == t.CV_FOLDS
-        assert set(report) == {
-            "splitter",
-            "groups",
-            "n_splits",
-            "overall_accuracy",
-            "macro_f1",
-            "per_class",
-            "confusion_matrix",
-        }
-        assert set(report["per_class"]) == {1, 2, 3} and report["confusion_matrix"]["labels"] == [1, 2, 3]
-        assert sum(c["support"] for c in report["per_class"].values()) == len(table)
+        assert set(report) == {"overall_accuracy", "macro_f1", "per_class_f1", "confusion_matrix"}
+        assert set(report["per_class_f1"]) == {1, 2, 3} and report["confusion_matrix"]["labels"] == [1, 2, 3]
+        assert report["macro_f1"] == pytest.approx(np.mean(list(report["per_class_f1"].values())))
+        assert sum(map(sum, report["confusion_matrix"]["matrix"])) == len(table)
 
 
-def test_fit_and_metadata(tmp_path):
-    table = _table()
-    model = t.fit(table)
-    assert list(model.feature_names_in_) == FEATURES and model.n_jobs is None
-    data = tmp_path / "points.geojson"
-    data.write_text("{}")
-    points = {"input": 40, "null_geometry": 1, "not_sampled": 2, "no_s2": 1, "used": len(table)}
-    metadata = json.loads(
-        json.dumps(t.build_metadata(model, table, t.cross_validate(table), 2022, "0-0-2", data, points))
-    )
-    for key in [
-        "sklearn_version",
-        "python_version",
-        "feature_names",
-        "classes",
-        "training_year",
-        "training_data_sha256",
-        "hyperparameters",
-        "oob_score",
-        "cv",
-        "git_sha",
-        "created",
-        "points",
-    ]:
-        assert key in metadata, key
-    assert metadata["points"]["input"] == sum(v for k, v in points.items() if k != "input")
-    assert metadata["training_data"] == str(data)
-    assert metadata["hyperparameters"] == t.HYPERPARAMETERS and "n_jobs" not in metadata["hyperparameters"]
-    assert metadata["classes"] == {str(code): name for code, (name, _) in CLASSES.items()}
+def test_fit():
+    model = t.fit(_table())
+    assert list(model.feature_names_in_) == FEATURES and model.n_jobs is None and 0 <= model.oob_score_ <= 1
 
 
 def test_train_requires_every_class(monkeypatch, tmp_path):
@@ -188,7 +153,7 @@ def test_upload(monkeypatch, tmp_path):
     monkeypatch.setattr(t, "s3_client", lambda: stub)
     t.upload(tmp_path, "0-0-2")
     assert stub.uploads == [
-        ("dep_s2s1_mrd/models/0-0-2/metadata.json", "application/json"),
+        ("dep_s2s1_mrd/models/0-0-2/metrics.json", "application/json"),
         ("dep_s2s1_mrd/models/0-0-2/model.joblib", "application/octet-stream"),
     ]
 

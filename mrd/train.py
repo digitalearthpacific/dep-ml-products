@@ -4,23 +4,18 @@ Features come from mrd.data.load_data and sample_points, the same functions clas
 sees features computed the same way. Run with `mrd train`; see `mrd train --help`.
 """
 
-import hashlib
 import json
 import logging
-import platform
-import subprocess
-from datetime import UTC, datetime
 from pathlib import Path
 
 import geopandas as gpd
 import joblib
 import numpy as np
 import pandas as pd
-import sklearn
 from dep_tools.aws import object_exists
-from dep_tools.grids import PACIFIC_GRID_10  # TODO: Validate that v0-0-1 used exactly this grid.
+from dep_tools.grids import PACIFIC_GRID_10  # Same grid as v0-0-1: its COGs match tile_geobox exactly.
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
 from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold, cross_val_predict
 
 from mrd import CLASSES, MODEL_PREFIX, OUTPUT_BUCKET, VERSION, tile_index
@@ -42,18 +37,6 @@ TRAINING_CHUNKS = {"x": 512, "y": 512}
 HYPERPARAMETERS = {"n_estimators": 500, "class_weight": "balanced", "oob_score": True, "random_state": 42}
 CV_FOLDS = 5
 TABLE_COLUMNS = ["tile", CLASS_COLUMN, *FEATURES]
-
-
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _git(*args: str) -> str | None:
-    """Output of a git command, or None if it fails (e.g. not a git checkout)."""
-    try:
-        return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout
-    except (OSError, subprocess.CalledProcessError):
-        return None
 
 
 def read_points(path: Path) -> tuple[gpd.GeoDataFrame, int]:
@@ -115,22 +98,12 @@ def _cv_metrics(table: pd.DataFrame, cv, groups: str | None) -> dict:
     model = RandomForestClassifier(**{**HYPERPARAMETERS, "oob_score": False}, n_jobs=-1)
     predicted = cross_val_predict(model, x, y, cv=cv, groups=table[groups] if groups else None)
     labels = sorted(int(c) for c in y.unique())
-    report = classification_report(y, predicted, labels=labels, output_dict=True, zero_division=0)
+    per_class = f1_score(y, predicted, labels=labels, average=None, zero_division=0)
     return {
-        "splitter": type(cv).__name__,
-        "groups": groups,
-        "n_splits": CV_FOLDS,
         "overall_accuracy": float(accuracy_score(y, predicted)),
-        "macro_f1": float(f1_score(y, predicted, labels=labels, average="macro", zero_division=0)),
-        "per_class": {
-            code: {
-                "precision": float(report[str(code)]["precision"]),
-                "recall": float(report[str(code)]["recall"]),
-                "f1": float(report[str(code)]["f1-score"]),
-                "support": int(report[str(code)]["support"]),
-            }
-            for code in labels
-        },
+        "macro_f1": float(per_class.mean()),
+        "per_class_f1": {code: float(f1) for code, f1 in zip(labels, per_class)},
+        # Rows are true classes, columns predicted, both in the order of labels.
         "confusion_matrix": {"labels": labels, "matrix": confusion_matrix(y, predicted, labels=labels).tolist()},
     }
 
@@ -150,46 +123,14 @@ def fit(table: pd.DataFrame) -> RandomForestClassifier:
     return model
 
 
-# TODO: Needed? STAC processing instead?
-def build_metadata(
-    model: RandomForestClassifier,
-    table: pd.DataFrame,
-    cv: dict,
-    year: int,
-    version: str,
-    training_data: Path,
-    points: dict,
-) -> dict:
-    sha, status = _git("rev-parse", "HEAD"), _git("status", "--porcelain")
-    return {
-        "version": version,
-        "created": datetime.now(UTC).isoformat(timespec="seconds"),
-        "git_sha": sha.strip() if sha else None,
-        "git_dirty": bool(status.strip()) if status is not None else None,
-        "python_version": platform.python_version(),
-        "sklearn_version": sklearn.__version__,
-        "training_year": year,
-        "training_data": str(training_data),
-        "training_data_sha256": _sha256(training_data),
-        "points": points,
-        "class_counts": {int(k): int(v) for k, v in table[CLASS_COLUMN].value_counts().sort_index().items()},
-        "tiles": {k: int(v) for k, v in table["tile"].value_counts().sort_index().items()},
-        "feature_names": list(model.feature_names_in_),
-        "classes": {code: name for code, (name, _) in CLASSES.items()},
-        "hyperparameters": HYPERPARAMETERS,
-        "oob_score": float(model.oob_score_),
-        "cv": cv,
-    }
-
-
 def _keys(version: str) -> dict[str, str]:
-    return {name: f"{MODEL_PREFIX}/{version}/{name}" for name in ["metadata.json", "model.joblib"]}
+    return {name: f"{MODEL_PREFIX}/{version}/{name}" for name in ["metrics.json", "model.joblib"]}
 
 
 def upload(local_dir: Path, version: str) -> None:
-    """Upload metadata.json then model.joblib, so a model is never published without its metadata."""
+    """Upload metrics.json then model.joblib, so a model is never published without its metrics."""
     client = s3_client()
-    content_types = {"metadata.json": "application/json", "model.joblib": "application/octet-stream"}
+    content_types = {"metrics.json": "application/json", "model.joblib": "application/octet-stream"}
     for name, key in _keys(version).items():
         client.upload_file(str(local_dir / name), OUTPUT_BUCKET, key, ExtraArgs={"ContentType": content_types[name]})
         logger.info(f"Uploaded s3://{OUTPUT_BUCKET}/{key}")
@@ -202,7 +143,7 @@ def train(
     upload_model: bool = True,
     overwrite: bool = False,
 ) -> Path:
-    """Train on all points, write model.joblib and metadata.json locally, and upload them unless upload_model is
+    """Train on all points, write model.joblib and metrics.json locally, and upload them unless upload_model is
     False. Returns the local directory.
 
     Raises:
@@ -229,17 +170,19 @@ def train(
     if missing:
         raise ValueError(f"No training points left for classes {sorted(missing)}")
 
-    cv = cross_validate(table)
+    metrics = cross_validate(table)
     model = fit(table)
-    metadata = build_metadata(model, table, cv, year, version, training_data, counts)
+    metrics["oob_score"] = float(model.oob_score_)
 
     local_dir = MODELS_DIR / version
     local_dir.mkdir(parents=True, exist_ok=True)
     joblib.dump(model, local_dir / "model.joblib", compress=3)
-    (local_dir / "metadata.json").write_text(json.dumps(metadata, indent=2, sort_keys=True))
+    (local_dir / "metrics.json").write_text(json.dumps(metrics, indent=2))
     for name in ["spatial", "random"]:
-        logger.info(f"{name} CV: accuracy {cv[name]['overall_accuracy']:.3f}, macro F1 {cv[name]['macro_f1']:.3f}")
-    logger.info(f"OOB score {metadata['oob_score']:.3f}. Wrote {local_dir}")
+        m = metrics[name]
+        logger.info(f"{name} CV: accuracy {m['overall_accuracy']:.3f}, macro F1 {m['macro_f1']:.3f}")
+        logger.info(f"{name} CV per-class F1: {m['per_class_f1']}")
+    logger.info(f"OOB score {metrics['oob_score']:.3f}. Wrote {local_dir}")
 
     if upload_model:
         upload(local_dir, version)

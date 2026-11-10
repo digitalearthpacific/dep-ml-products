@@ -103,3 +103,9 @@ make test                                    # offline tests
 make lint
 uv run python tests/test_data.py network    # loads real data across the antimeridian (slow)
 ```
+
+
+## Training Data
+
+Will is in comms with MRD for newer quarries and tenements data.
+https://www.lands.gov.fj/

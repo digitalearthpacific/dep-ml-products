@@ -146,7 +146,7 @@ This plan follows <https://github.com/auspatious/ldn-lulc> (D13). Citations belo
 | WGS84 inputs (DEM) | `load_across_antimeridian`: east and west halves are loaded separately, joined in `+pm=180`, then reprojected to the geobox. A plain `stac_load(geobox=)` left about **24% of Fiji tile 066_020 empty** (`raster.py:214-256`). | Port `load_across_antimeridian` for `cop-dem-glo-30` |
 | Padding | `FOCAL_PAD` is half the largest focal window (25 px). Features are computed on the padded data, then `crop_to_geobox` (`raster.py:203-205, 438-452`). | DEM only, about 100 m (at least 3 GLO-30 pixels), searched and loaded on the padded area so terrain gradients at tile edges use real neighbours. Terrain is computed on the native DEM grid, then reprojected onto the unpadded geobox, which is the crop. No focal statistics. |
 | Feature check | `do_prediction` fails if the dataset's features differ from `model.feature_names_in_` (`lulc.py:209-213`) | Same (FR4) |
-| Model storage | One `.joblib` under `models/<v>/`, uploaded with boto3, downloaded over **HTTPS** with `requests` and cached (`lulc.py:418-454`). No metadata file. | Same download path, plus `metadata.json` (an addition) |
+| Model storage | One `.joblib` under `models/<v>/`, uploaded with boto3, downloaded over **HTTPS** with `requests` and cached (`lulc.py:418-454`). No metadata file. | Same download path, plus `metrics.json` (an addition) |
 | Version | Several constants (`utils.py:93-100`) | One `VERSION` (D1) |
 | Writing | dep-tools: `S3ItemPath`, `AwsDsCogWriter(write_multithreaded=True)`, `AwsStacWriter`, `StacCreator`, with an antimeridian-safe STAC bbox and geometry (`raster.py:483-590, 728-760`) | Same, including the antimeridian-safe bbox and geometry |
 | Nodata | 255 for classification and probabilities. Probability is `round(p*100)` uint8 (`lulc.py:178-179, 395-398`). | Same encoding. A single winning-class `proba` band (D9) instead of one band per class. |
@@ -201,15 +201,8 @@ Not adopted from ldn-lulc:
   - groups points by tile; for each tile, runs `load_data(tile_geobox, year)` then `sample_points` (vectorised nearest-pixel `sel`);
   - reports `StratifiedGroupKFold` CV (5 folds, groups = tile) and random stratified 5-fold CV;
   - fits `RandomForestClassifier(n_estimators=500, class_weight="balanced", oob_score=True, random_state=42)` on all points, as a DataFrame so feature names are kept;
-  - uploads `model.joblib` and `metadata.json` with boto3.
-- **FR6: `metadata.json` contents.**
-  - sklearn and python versions;
-  - `feature_names` and the class map;
-  - training year (2022) and a hash of the training data;
-  - hyperparameters;
-  - OOB score;
-  - CV overall accuracy, macro-F1, per-class P/R/F1 with support, and the confusion matrix;
-  - git SHA and creation time.
+  - uploads `model.joblib` and `metrics.json` with boto3.
+- **FR6: `metrics.json` contents.** OOB score, and for spatial (by tile) and random 5-fold CV: overall accuracy, macro F1, per-class F1 and the confusion matrix.
 - **FR7: task list.** `mrd print-tasks --years 2017-2024 --regions FJ [--overwrite/--no-overwrite]` emits `[{"tile-id","year","version"}]`.
   - Invalid `--years` raises an error.
   - Without `--overwrite`, tiles that already have a STAC item are dropped.
@@ -245,7 +238,7 @@ Not adopted from ldn-lulc:
 
 ## Acceptance criteria
 
-- **AC1:** `models/0-0-2/model.joblib` and `metadata.json` exist in `dep-public-staging`. The metadata covers every training point that has features (about 1,630) and includes the spatial-CV metrics.
+- **AC1:** `models/0-0-2/model.joblib` and `metrics.json` exist in `dep-public-staging`. `metrics.json` has the OOB score and, for spatial and random CV, overall accuracy, macro F1, per-class F1 and the confusion matrix.
 - **AC2:** In the Docker image, `mrd.data.load_model(...)` gives no sklearn version warning, and `feature_names_in_` equals `list(load_data(...).data_vars)` for any FJ tile.
 - **AC3:** `mrd run --tile-id 66,20 --year 2022` (tile crosses 180°) writes `class` and `proba`. The DEM-derived features have no empty stripe east or west of 180° (ldn-lulc's failure mode was about 24% of this tile empty). Output pixels are nodata (255) only where S2 reflectance is NaN, which includes the upstream DEP S2 gap around 180°.
 - **AC4:** The shared edge of tiles `65,20` and `66,20` shows no seam in slope.
@@ -268,7 +261,7 @@ Not adopted from ldn-lulc:
 | Empty DEM regions across 180° | Port `load_across_antimeridian` (FR2); AC3 |
 | Missing DEM tiles in the pad at tile edges | The DEM is searched and loaded on the padded area (FR2, FR3); AC4 |
 | DEP S2 geomad gap around 180° makes those pixels `class` nodata | Upstream DEP data issue; recorded in Research findings, reported to DEP (Open question 4) |
-| A 2022-trained model drifts on 2017–2024 | Accepted for v0-0-2 (D12); training year recorded in metadata |
+| A 2022-trained model drifts on 2017–2024 | Accepted for v0-0-2 (D12); training year in the README |
 | Spatial CV comes out much lower than OOB | Report both; don't block |
 | No S1 geomad for 2025 | Default years 2017–2024; FR9; rerun with `years=2025` once it is published |
 
@@ -319,14 +312,14 @@ All tasks are done on the `productionise` branch, which branches off `will-run`.
 **In scope:**
 - `mrd/train.py`, plus `mrd train` in `mrd/cli.py` (FR5, FR6).
 - Training data is private: not in this public repo. `make training-data` downloads it to `data/mred-tdata.geojson` (git-ignored) from nicholasmetherall/minerals-model; the README states this limitation.
-- Train with 2022 imagery and upload `model.joblib` and `metadata.json` to `models/0-0-2/`.
+- Train with 2022 imagery and upload `model.joblib` and `metrics.json` to `models/0-0-2/`.
 - Make `notebooks/1-ml-learning.ipynb` a thin caller.
 **Out of scope:**
 - Hyperparameter search.
 - Other training years.
 - New labels.
 **Surfaces touched:** `mrd/train.py`, `mrd/cli.py`, `mrd/__init__.py`, `tests/test_train.py`, `pyproject.toml`, `uv.lock`, `Makefile`, `README.md`, `notebooks/1-ml-learning.ipynb`
-**Interfaces:** `mrd train --year 2022 --version 0-0-2` writes `s3://dep-public-staging/dep_s2s1_mrd/models/0-0-2/{model.joblib,metadata.json}`.
+**Interfaces:** `mrd train --year 2022 --version 0-0-2` writes `s3://dep-public-staging/dep_s2s1_mrd/models/0-0-2/{model.joblib,metrics.json}`.
 **Verification:**
 - AC1 and AC2.
 - A rerun gives an identical CV report (NFR1).
