@@ -16,11 +16,12 @@ run:
 		$(IMAGE) \
 		mrd run --tile-id 64,20 --year 2022 --overwrite
 
+test-run:
+	uv run mrd run --tile-id 64,20 --year 2022 --no-overwrite --model-path "data/models/0-0-2/model.joblib" --image-tag v0-0-2
+
+# Prerequisites the training data
 train: data/mred-tdata.geojson
 	uv run mrd train --year 2022
-
-data/mred-tdata.geojson:
-	$(MAKE) training-data
 
 test:
 	uv run pytest tests -q
