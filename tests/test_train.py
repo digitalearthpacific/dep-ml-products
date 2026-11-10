@@ -1,7 +1,5 @@
 """Offline checks for mrd.train: run with `pytest tests`."""
 
-import json
-
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -112,18 +110,6 @@ def _table(n_per_class: int = 12, n_tiles: int = 6) -> pd.DataFrame:
     table.insert(0, t.CLASS_COLUMN, codes)
     table.insert(0, "tile", [f"{i % n_tiles},1" for i in range(len(codes))])
     return table
-
-
-def test_cross_validate_is_deterministic():
-    table = _table()
-    first, second = t.cross_validate(table), t.cross_validate(table)
-    assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
-    for name in ["spatial", "random"]:
-        report = first[name]
-        assert set(report) == {"overall_accuracy", "macro_f1", "per_class_f1", "confusion_matrix"}
-        assert set(report["per_class_f1"]) == {1, 2, 3} and report["confusion_matrix"]["labels"] == [1, 2, 3]
-        assert report["macro_f1"] == pytest.approx(np.mean(list(report["per_class_f1"].values())))
-        assert sum(map(sum, report["confusion_matrix"]["matrix"])) == len(table)
 
 
 def test_fit():

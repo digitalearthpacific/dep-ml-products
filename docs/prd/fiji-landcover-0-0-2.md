@@ -153,7 +153,7 @@ This plan follows <https://github.com/auspatious/ldn-lulc> (D13). Citations belo
 | Skip existing | Checked both in `print-tasks` (lists STAC items) and in the task (`object_exists`) (`cli.py:81-176`, `raster.py:532-535`) | Same |
 | Errors | Each run logs and re-raises, so the pod exits 1 (`lulc.py:673-675`). There is a skip exit code for empty inputs (`cli_geomad.py:39-40`). | No data: exit 0 with a warning. Anything else: exit non-zero (FR9). |
 | Dask and logging | `configure_s3_access_profile()`, `with DaskClient(...)`, 1024 chunks. One logging config set in the CLI; modules use `getLogger(__name__)` (`aws.py:27-29`, `lulc.py:637-642`, `cli.py:47-56`). | Same |
-| Training | Fitting happens in a notebook. OOB score plus held-out test tiles, no CV (cells 16, 19). | `mrd train` CLI (D7) with spatial grouped CV |
+| Training | Fitting happens in a notebook. OOB score plus held-out test tiles, no CV (cells 16, 19). | `mrd train` CLI (D7); OOB score only |
 | Dependencies and CI | uv, pinned `scikit-learn>=1.8,<1.9` with a comment that model and classification must be upgraded together, ruff (E, F, I, line length 120), Docker smoke test `ldn --help` (`pyproject.toml:37, 64-71`, `Dockerfile:1-30`) | Same tools. Exact sklearn pin; ruff replaces black. |
 | Argo | `templates/ls-lulc-classify-annual.yaml`: `print-tasks` feeds `withParam`, parameters for years, version, image-tag and model-path, request 9Gi/1 CPU, no retries (`:32-178`) | Same shape. Keep a small retry on `run`; it is safe because no-data exits 0. |
 
@@ -199,10 +199,9 @@ Not adopted from ldn-lulc:
 - **FR5: training.** `mrd train [--year 2022] [--version] [--training-data data/mred-tdata.geojson]`:
   - drops null-geometry points and reprojects to EPSG:3832;
   - groups points by tile; for each tile, runs `load_data(tile_geobox, year)` then `sample_points` (vectorised nearest-pixel `sel`);
-  - reports `StratifiedGroupKFold` CV (5 folds, groups = tile) and random stratified 5-fold CV;
   - fits `RandomForestClassifier(n_estimators=500, class_weight="balanced", oob_score=True, random_state=42)` on all points, as a DataFrame so feature names are kept;
   - uploads `model.joblib` and `metrics.json` with boto3.
-- **FR6: `metrics.json` contents.** OOB score, and for spatial (by tile) and random 5-fold CV: overall accuracy, macro F1, per-class F1 and the confusion matrix.
+- **FR6: `metrics.json` contents.** The OOB score.
 - **FR7: task list.** `mrd print-tasks --years 2017-2024 --regions FJ [--overwrite/--no-overwrite]` emits `[{"tile-id","year","version"}]`.
   - Invalid `--years` raises an error.
   - Without `--overwrite`, tiles that already have a STAC item are dropped.
@@ -238,7 +237,7 @@ Not adopted from ldn-lulc:
 
 ## Acceptance criteria
 
-- **AC1:** `models/0-0-2/model.joblib` and `metrics.json` exist in `dep-public-staging`. `metrics.json` has the OOB score and, for spatial and random CV, overall accuracy, macro F1, per-class F1 and the confusion matrix.
+- **AC1:** `models/0-0-2/model.joblib` and `metrics.json` exist in `dep-public-staging`. `metrics.json` has the OOB score.
 - **AC2:** In the Docker image, `mrd.data.load_model(...)` gives no sklearn version warning, and `feature_names_in_` equals `list(load_data(...).data_vars)` for any FJ tile.
 - **AC3:** `mrd run --tile-id 66,20 --year 2022` (tile crosses 180°) writes `class` and `proba`. The DEM-derived features have no empty stripe east or west of 180° (ldn-lulc's failure mode was about 24% of this tile empty). Output pixels are nodata (255) only where S2 reflectance is NaN, which includes the upstream DEP S2 gap around 180°.
 - **AC4:** The shared edge of tiles `65,20` and `66,20` shows no seam in slope.
@@ -394,4 +393,4 @@ Resolved:
 - **dep-grid:** <https://github.com/digitalearthpacific/dep-grid>, `grid_pacific.geojson`.
 - **STAC APIs:** <https://stac.digitalearthpacific.org>, <https://stac.staging.digitalearthpacific.io> (item searches over Fiji, 2026-11-08).
 - **Existing outputs:** `s3://dep-public-staging/dep_s2s1_mrd/0-0-1/`.
-- **Library guidance from model knowledge:** the `StratifiedGroupKFold` and joblib guidance came from model knowledge, not a fetched source.
+- **Library guidance from model knowledge:** the joblib guidance came from model knowledge, not a fetched source.

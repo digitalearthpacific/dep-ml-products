@@ -15,8 +15,6 @@ import pandas as pd
 from dep_tools.aws import object_exists
 from dep_tools.grids import PACIFIC_GRID_10  # Same grid as v0-0-1: its COGs match tile_geobox exactly.
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
-from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold, cross_val_predict
 
 from mrd import CLASSES, MODEL_PREFIX, OUTPUT_BUCKET, VERSION, tile_index
 from mrd.aws import s3_client
@@ -35,7 +33,6 @@ TRAINING_CHUNKS = {"x": 512, "y": 512}
 # FR5. n_jobs isn't a hyperparameter: it's passed separately and cleared before saving, so classification's
 # per-block predict_proba doesn't start its own threads inside dask.
 HYPERPARAMETERS = {"n_estimators": 500, "class_weight": "balanced", "oob_score": True, "random_state": 42}
-CV_FOLDS = 5
 TABLE_COLUMNS = ["tile", CLASS_COLUMN, *FEATURES]
 
 
@@ -93,29 +90,6 @@ def drop_unobserved(table: pd.DataFrame) -> pd.DataFrame:
     return table[table[S2_REFLECTANCE].notna().all(axis=1)]
 
 
-def _cv_metrics(table: pd.DataFrame, cv, groups: str | None) -> dict:
-    x, y = table[FEATURES], table[CLASS_COLUMN]
-    model = RandomForestClassifier(**{**HYPERPARAMETERS, "oob_score": False}, n_jobs=-1)
-    predicted = cross_val_predict(model, x, y, cv=cv, groups=table[groups] if groups else None)
-    labels = sorted(int(c) for c in y.unique())
-    per_class = f1_score(y, predicted, labels=labels, average=None, zero_division=0)
-    return {
-        "overall_accuracy": float(accuracy_score(y, predicted)),
-        "macro_f1": float(per_class.mean()),
-        "per_class_f1": {code: float(f1) for code, f1 in zip(labels, per_class)},
-        # Rows are true classes, columns predicted, both in the order of labels.
-        "confusion_matrix": {"labels": labels, "matrix": confusion_matrix(y, predicted, labels=labels).tolist()},
-    }
-
-
-def cross_validate(table: pd.DataFrame) -> dict:
-    """Spatial (grouped by tile) and random stratified 5-fold cross-validation reports."""
-    return {
-        "spatial": _cv_metrics(table, StratifiedGroupKFold(CV_FOLDS, shuffle=True, random_state=42), "tile"),
-        "random": _cv_metrics(table, StratifiedKFold(CV_FOLDS, shuffle=True, random_state=42), None),
-    }
-
-
 def fit(table: pd.DataFrame) -> RandomForestClassifier:
     """Fit on all points. A DataFrame keeps the feature names on the model."""
     model = RandomForestClassifier(**HYPERPARAMETERS, n_jobs=-1).fit(table[FEATURES], table[CLASS_COLUMN])
@@ -170,18 +144,13 @@ def train(
     if missing:
         raise ValueError(f"No training points left for classes {sorted(missing)}")
 
-    metrics = cross_validate(table)
     model = fit(table)
-    metrics["oob_score"] = float(model.oob_score_)
+    metrics = {"oob_score": float(model.oob_score_)}
 
     local_dir = MODELS_DIR / version
     local_dir.mkdir(parents=True, exist_ok=True)
     joblib.dump(model, local_dir / "model.joblib", compress=3)
     (local_dir / "metrics.json").write_text(json.dumps(metrics, indent=2))
-    for name in ["spatial", "random"]:
-        m = metrics[name]
-        logger.info(f"{name} CV: accuracy {m['overall_accuracy']:.3f}, macro F1 {m['macro_f1']:.3f}")
-        logger.info(f"{name} CV per-class F1: {m['per_class_f1']}")
     logger.info(f"OOB score {metrics['oob_score']:.3f}. Wrote {local_dir}")
 
     if upload_model:
