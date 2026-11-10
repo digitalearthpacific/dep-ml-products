@@ -33,13 +33,13 @@ def test_print_tasks(monkeypatch):
     monkeypatch.setattr(c, "fiji_tiles", lambda: ["65,20", "66,20"])
     done = c.item_path("b", "0-0-2", 2022).stac_path("66,20")
     monkeypatch.setattr(c, "existing_stac_keys", lambda bucket, version: {done})
-    tasks = json.loads(c.print_tasks("2022-2023", "0-0-2", "b", overwrite=False, limit=None))
+    tasks = json.loads(c.print_tasks("2022-2023", "0-0-2", "b", overwrite=False))
     assert {(t["tile-id"], t["year"]) for t in tasks} == {("65,20", 2022), ("65,20", 2023), ("66,20", 2023)}
     assert all(t["version"] == "0-0-2" for t in tasks)
-    all_tasks = json.loads(c.print_tasks("2022-2023", "0-0-2", "b", overwrite=True, limit=None))
+    all_tasks = json.loads(c.print_tasks("2022-2023", "0-0-2", "b", overwrite=True))
     assert len(all_tasks) == 4
-    output = c.print_tasks("2022", "0-0-2", "b", overwrite=True, limit=1)
-    assert json.loads(output) == [{"tile-id": "65,20", "year": 2022, "version": "0-0-2"}] and " " not in output
+    output = c.print_tasks("2022", "0-0-2", "b", overwrite=True)
+    assert json.loads(output)[0] == {"tile-id": "65,20", "year": 2022, "version": "0-0-2"} and " " not in output
 
 
 def test_existing_stac_keys(monkeypatch):

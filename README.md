@@ -76,7 +76,7 @@ uv run mrd print-tasks --years 2017-2024 --overwrite   # the task list the workf
 
 ```bash
 argo submit workflow/ml-mrd-annual.yaml -p image-tag=<tag>                          # Fiji, 2017-2024
-argo submit workflow/ml-mrd-annual.yaml -p image-tag=<tag> -p years=2022 -p limit=3  # a quick test
+argo submit workflow/ml-mrd-annual.yaml -p image-tag=<tag> -p years=2022            # one year
 ```
 
 - `image-tag` is required. Left unset, pods fail with `ErrImagePull`.

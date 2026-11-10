@@ -1,5 +1,5 @@
 # MRD (Mineral Resource Detection) land-cover classification: one pod per dep grid tile and year.
-# Submit: argo submit workflow/ml-mrd-annual.yaml -p image-tag=<tag> [-p years=2022 -p limit=3]
+# Submit: argo submit workflow/ml-mrd-annual.yaml -p image-tag=<tag> [-p years=2022]
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
@@ -26,8 +26,6 @@ spec:
         value: "0-0-2" # Output version; mrd run loads the model published for it
       - name: years
         value: "2017-2024" # "2022", "2017-2024" or "2017,2020". S1 geomad has no 2025 yet.
-      - name: limit
-        value: "" # e.g. "3" for a test run; empty for all tasks
       - name: image-name
         value: "dep-ml-products"
       - name: image-tag
@@ -61,18 +59,16 @@ spec:
           requests:
             memory: 1Gi
             cpu: "1"
-        env:
-          - name: LIMIT
-            value: "{{workflow.parameters.limit}}"
-        command: [bash, -c]
+        command: [mrd]
         args:
-          - >-
-            mrd print-tasks
-            --years "{{workflow.parameters.years}}"
-            --version "{{workflow.parameters.version}}"
-            --output-bucket "{{workflow.parameters.output-bucket}}"
-            {{workflow.parameters.overwrite}}
-            ${LIMIT:+--limit "$LIMIT"}
+          - print-tasks
+          - --years
+          - "{{workflow.parameters.years}}"
+          - --version
+          - "{{workflow.parameters.version}}"
+          - --output-bucket
+          - "{{workflow.parameters.output-bucket}}"
+          - "{{workflow.parameters.overwrite}}"
 
     - name: process
       inputs:
