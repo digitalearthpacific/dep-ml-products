@@ -67,7 +67,7 @@ from pystac import Item
 from pystac_client import Client
 from shapely.geometry import box, shape
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.exceptions import InconsistentVersionWarning
+from sklearn.exceptions import InconsistentVersionWarning  # pyright: ignore[reportAttributeAccessIssue]
 
 from mrd import (
     CLASSES,
@@ -120,7 +120,7 @@ def safe_divide(num: xr.DataArray, den: xr.DataArray) -> xr.DataArray:
 
 
 def scale_reflectance(ds: xr.Dataset) -> xr.Dataset:
-    """Scale the S2 reflectance bands in place to float32 in [0, 1], with nodata as NaN.
+    """Scale the S2 reflectance bands in place from uint16 to float32 in [0, 1], with nodata as NaN.
 
     Raises:
         ValueError: If a band has no declared nodata (load with odc-stac so the STAC nodata is set).
@@ -179,14 +179,14 @@ def terrain_features(dem: xr.DataArray) -> xr.Dataset:
     return xr.Dataset({name: v.astype("float32") for name, v in {"elevation": dem, **terrain}.items()})
 
 
+# TODO: update _overlaps bandaid.
 def _overlaps(footprint: dict, geobox: GeoBox) -> bool:
     """Whether an EPSG:4326 item footprint overlaps geobox, not just touches its edge.
 
-    The extent is shrunk by half a pixel so floating point slivers from the EPSG:4326 round trip don't keep
-    neighbouring tiles.
+    The extent is shrunk by a pixel so floating point slivers from the EPSG:4326 round trip don't keep neighbouring
+    tiles.
     """
-    inner = geobox.extent.buffer(-abs(geobox.resolution.x) / 2)
-    return Geometry(footprint, WGS84).to_crs(geobox.crs).intersects(inner)
+    return Geometry(footprint, WGS84).to_crs(geobox.crs).intersects(geobox.pad(-1).extent)
 
 
 def _search(client: Client, geobox: GeoBox, **kwargs) -> list[Item]:

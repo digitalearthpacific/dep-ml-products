@@ -86,7 +86,8 @@ def print_tasks(
     Raises:
         ValueError: For invalid years.
     """
-    tiles, year_list = fiji_tiles(), parse_years(years)
+    tiles = fiji_tiles()
+    year_list = parse_years(years)
     tasks = [{"tile-id": tile, "year": year, "version": version} for tile in tiles for year in year_list]
     if not overwrite:
         existing = existing_stac_keys(bucket, version)
@@ -122,8 +123,9 @@ def run(
     image_tag: str = "unknown",
     threads: int | None = None,
 ) -> list[str] | None:
-    """Classify one tile and year, and write class and proba COGs and a STAC item. Returns the written keys, or None
-    if the tile was skipped (already done) or has no input data.
+    """Classify one tile and year, and write class and proba COGs and a STAC item.
+
+    Returns the written keys, or None if the tile was skipped (already done) or has no input data.
     """
     geobox = PACIFIC_GRID_10.tile_geobox(tile_index(tile_id))
     itempath = item_path(bucket, version, year)

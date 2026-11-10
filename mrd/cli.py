@@ -48,7 +48,7 @@ def print_tasks(
 
 @app.command()
 def run(
-    tile_id: str = typer.Option(..., help='dep grid tile id, "col,row", e.g. "66,20".'),
+    tile_id: str = typer.Option(..., help='DEP grid tile id, "col,row", e.g. "66,20".'),
     year: int = typer.Option(...),
     version: str = typer.Option(VERSION, help="Output version; the model is the one published for it."),
     model_path: str = typer.Option(None, help="Model URL or local path. Default: the model published for --version."),
