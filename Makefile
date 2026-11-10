@@ -10,6 +10,9 @@ training-data:
 build:
 	docker build --platform linux/amd64 --tag $(IMAGE) .
 
+print-tasks:
+	uv run mrd print-tasks --years 2022
+
 run:
 	docker run --platform linux/amd64 --rm \
 		-e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
@@ -18,6 +21,18 @@ run:
 
 test-run:
 	uv run mrd run --tile-id 64,20 --year 2022 --no-overwrite --model-path "data/models/0-0-2/model.joblib" --image-tag v0-0-2
+
+# Classify every task locally, one tile at a time (each uses all cores and ~20 GB), skipping finished tiles.
+# make run-all YEARS=2017-2024
+YEARS ?= 2022
+MODEL ?= data/models/0-0-2/model.joblib
+run-all:
+	uv run mrd print-tasks --years $(YEARS) | jq -r '.[] | "\(.["tile-id"]) \(.year)"' | \
+	while read tile year; do \
+		uv run mrd run --tile-id $$tile --year $$year --model-path $(MODEL) --image-tag v0-0-2 < /dev/null \
+			|| echo "FAILED $$tile $$year" >> run-all-failures.txt; \
+	done; \
+	if [ -f run-all-failures.txt ]; then cat run-all-failures.txt; fi
 
 # Prerequisites the training data
 train: data/mred-tdata.geojson
