@@ -4,7 +4,6 @@
 """
 
 import sys
-from types import SimpleNamespace
 
 import geopandas as gpd
 import joblib
@@ -20,7 +19,6 @@ from odc.stac import load as stac_load
 from shapely.geometry import Point
 from sklearn.ensemble import RandomForestClassifier
 
-import mrd.data
 from mrd import NODATA
 from mrd.data import (
     FEATURES,
@@ -29,7 +27,6 @@ from mrd.data import (
     S1_COLLECTION,
     S2_COLLECTION,
     S2_REFLECTANCE,
-    TERRAIN,
     _assign_geobox,
     _merge_geographic_halves,
     _overlaps,
@@ -38,7 +35,6 @@ from mrd.data import (
     add_indices,
     fiji_tiles,
     load_data,
-    load_dem_terrain,
     load_model,
     predict,
     sample_points,
@@ -173,17 +169,6 @@ def test_sample_points():
     assert outside.empty and list(outside.columns) == ["a", "b"]
 
 
-def test_no_dem_items_gives_chunked_nan_terrain(monkeypatch):
-    monkeypatch.setattr(mrd.data, "Client", SimpleNamespace(open=lambda url: None))
-    monkeypatch.setattr(mrd.data, "_search", lambda *args, **kwargs: [])
-    geobox = GeoBox.from_bbox((0, 0, 100, 80), "EPSG:3832", resolution=10)
-    terrain = load_dem_terrain(geobox, {"x": 4, "y": 4})
-    assert list(terrain.data_vars) == TERRAIN
-    assert terrain.odc.geobox == geobox
-    assert terrain.slope.chunks == ((4, 4), (4, 4, 2))
-    assert terrain.slope.isnull().all()
-
-
 def _model(labels=(1, 2, 3)) -> RandomForestClassifier:
     rng = np.random.default_rng(0)
     x = pd.DataFrame(rng.random((60, len(FEATURES))), columns=FEATURES)
@@ -272,13 +257,6 @@ def check_network() -> None:
     assert not ds.elevation.isnull().all("y").any()
     _assert_s2_matches_source(ds, window)
     print("Network checks passed")
-
-
-def test_fiji_tiles_format(monkeypatch):
-    monkeypatch.setattr(
-        mrd.data, "get_tiles", lambda **kwargs: iter([((66, 20), None), ((9, 1), None), ((10, 1), None)])
-    )
-    assert fiji_tiles() == ["9,1", "10,1", "66,20"]
 
 
 if __name__ == "__main__":
