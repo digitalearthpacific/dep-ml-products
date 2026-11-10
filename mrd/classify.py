@@ -127,6 +127,7 @@ def run(
 
     Returns the written keys, or None if the tile was skipped (already done) or has no input data.
     """
+    logger.info(f"Running classification for tile {tile_id} year {year}")
     geobox = PACIFIC_GRID_10.tile_geobox(tile_index(tile_id))
     itempath = item_path(bucket, version, year)
     stac_key = itempath.stac_path(tile_id)
@@ -167,6 +168,8 @@ def run(
         # A local model has no URL readers could follow, so record where it came from without a link.
         item.properties["mrd:model"] = Path(model_source).resolve().as_uri()
     item.properties["mrd:image_tag"] = image_tag
+    # Inputs that didn't exist for this tile and year (e.g. no S1), so the classification was made without them.
+    item.properties["mrd:missing_inputs"] = ds.attrs["missing_inputs"]
     write_stac_s3(item, stac_key, bucket, client=client)
     logger.info(f"Wrote {tile_id} {year}: {paths + [stac_key]}")
     return paths + [stac_key]

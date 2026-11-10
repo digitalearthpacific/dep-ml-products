@@ -95,9 +95,7 @@ We need one production path: train a single model on all Fiji training data, pub
 
 On prod STAC `stac.digitalearthpacific.org` (checked 2026-11-08, item searches over Fiji), `dep_s1_geomad` has items for 2017–2024 and **none for 2025**. `dep_s2_geomad` has 2017–2025. The collection-level temporal extent is open-ended and can't be relied on; only item searches show which years exist.
 
-Because there is a single model that needs S1 features (D11), **2025 cannot be classified until DEP publishes S1 geomad 2025**. When it is published, run the workflow with `years=2025`; no code change is needed. Until then:
-- the workflow's default range is `2017-2024`;
-- a 2025 task exits 0 with a "no S1 data" log line (FR9).
+Some outer islands also lack S1 in other years (in 2022: tiles 62,27, 67,16, 67,17, 67,19 and 68,18). With a single model (D11), tiles without S1 are classified with the S1 features as NaN (D18), flagged in the STAC item as `mrd:missing_inputs: ["dep_s1_geomad"]`. That includes every 2025 tile. When DEP publishes S1 for 2025, rerun 2025 with `--overwrite`. The workflow's default range stays `2017-2024`.
 
 ## Decisions (from the user)
 
@@ -120,6 +118,7 @@ Because there is a single model that needs S1 features (D11), **2025 cannot be c
 | D15 | The dep grid (`PACIFIC_GRID_10`), as in 0-0-1 (confirmed: 0-0-1's COGs match `tile_geobox` exactly). The tiles are those intersecting Fiji's land (GADM), from dep-tools' `get_tiles(resolution=10, country_codes=["FJI"])`: 27 tiles, for training and classification, including Rotuma (62,27) and the Lau group across 180. Unlike dep-grid's 54 `FJ` tiles, ocean-only tiles are left out. |
 | D16 | Inputs are read from prod STAC. Outputs are written to `dep-public-staging` as a test run; a later run writes to the prod bucket by changing only `--output-bucket`. |
 | D17 | For T1, index and terrain logic is checked against ldn-lulc's implementation, which is more robust, and aligned with it. |
+| D18 | Tiles without S1 for a year are classified with NaN S1 features (the random forest accepts missing values), and the STAC item records `mrd:missing_inputs`. Accepted: likely less accurate there, since the model was trained only on points with S1. |
 
 ## Proposal
 
@@ -214,7 +213,8 @@ Not adopted from ldn-lulc:
     - `proba`: uint8 winning-class percent 0–100, nodata 255;
     - a STAC item with an antimeridian-safe bbox and geometry, the model URI as a `related` link, and the image tag.
 - **FR9: failure behaviour.**
-  - If no S2 or S1 items exist for the tile and year (ocean-only, or S1 2025), log a "no data" warning naming the missing collection and exit 0 without writing.
+  - If no S2 item exists for the tile and year, log a "no data" warning and exit 0 without writing.
+  - If no S1 item exists (S1 2025, some outer islands), classify with NaN S1 features and record `mrd:missing_inputs` in the STAC item (D18).
   - Any other exception is logged and re-raised, so the pod exits non-zero.
 - **FR10: workflow.** `workflow/ml-mrd-annual.yaml`, `generateName: dep-ml-mrd-`, label `app: ml-mrd`.
   - Workflow parameters: `version` (default `0-0-2`), `years` (default `2017-2024`), `image-tag`, `overwrite`.
@@ -262,7 +262,7 @@ Not adopted from ldn-lulc:
 | DEP S2 geomad gap around 180° makes those pixels `class` nodata | Upstream DEP data issue; recorded in Research findings, reported to DEP (Open question 4) |
 | A 2022-trained model drifts on 2017–2024 | Accepted for v0-0-2 (D12); training year in the README |
 | Spatial CV comes out much lower than OOB | Report both; don't block |
-| No S1 geomad for 2025 | Default years 2017–2024; FR9; rerun with `years=2025` once it is published |
+| No S1 geomad for 2025 and some outer islands | Classified with NaN S1 and flagged (D18), likely less accurate; rerun with `--overwrite` once S1 is published |
 
 ## Implementation roadmap
 
@@ -344,7 +344,7 @@ All tasks are done on the `productionise` branch, which branches off `will-run`.
 - `mrd print-tasks --years 2017-2024` prints a JSON list.
 **Verification:**
 - AC3, AC4, AC5, AC7 and AC8.
-- `mrd run` for a 2025 tile exits 0 with a "no S1 data" warning.
+- `mrd run` for a tile without S1 writes outputs, and its STAC item has `mrd:missing_inputs: ["dep_s1_geomad"]`.
 **Next command:** `/eg-new-feature implement T3 from docs/prd/fiji-landcover-0-0-2.md`
 
 ### T4: Renamed, parameterised Argo workflow and docs

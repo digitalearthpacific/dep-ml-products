@@ -29,6 +29,7 @@ from mrd.data import (
     S2_REFLECTANCE,
     _assign_geobox,
     _merge_geographic_halves,
+    _nan_dataset,
     _overlaps,
     _search,
     _shift_to_pm180,
@@ -257,6 +258,13 @@ def check_network() -> None:
     assert not ds.elevation.isnull().all("y").any()
     _assert_s2_matches_source(ds, window)
     print("Network checks passed")
+
+
+def test_nan_dataset():
+    geobox = GeoBox.from_bbox((0, 0, 80, 60), "EPSG:3832", resolution=10)
+    ds = _nan_dataset(geobox, S1_BANDS, {"x": 4, "y": 4})
+    assert list(ds.data_vars) == S1_BANDS and ds.odc.geobox == geobox
+    assert ds.mean_vv.chunks == ((4, 2), (4, 4)) and ds.mean_vv.isnull().all()
 
 
 if __name__ == "__main__":

@@ -252,6 +252,13 @@ def _dask_chunks(chunks: dict) -> dict | str:
     return chunks or "auto"
 
 
+def _nan_dataset(geobox: GeoBox, names: list[str], chunks: dict) -> xr.Dataset:
+    """All-NaN float32 variables on geobox, for inputs that don't exist there."""
+    nan = da.full(tuple(geobox.shape), np.nan, dtype="float32")
+    ds = xr.Dataset({n: (("y", "x"), nan) for n in names}, coords=xr_coords(geobox))
+    return assign_crs(ds, geobox.crs).chunk(_dask_chunks(chunks))
+
+
 def load_dem_terrain(geobox: GeoBox, chunks: dict) -> xr.Dataset:
     """Copernicus DEM GLO-30 terrain features on geobox: computed on the DEM's native grid, then reprojected.
 
@@ -264,9 +271,7 @@ def load_dem_terrain(geobox: GeoBox, chunks: dict) -> xr.Dataset:
         raise RuntimeError(f"Too many DEM items ({len(items)}). Expected ~4, the search may be world-spanning.")
     if not items:
         logger.warning("No DEM items; terrain is NaN")
-        nan = da.full(tuple(geobox.shape), np.nan, dtype="float32")
-        terrain = xr.Dataset({n: (("y", "x"), nan) for n in TERRAIN}, coords=xr_coords(geobox))
-        return assign_crs(terrain, geobox.crs).chunk(_dask_chunks(chunks))
+        return _nan_dataset(geobox, TERRAIN, chunks)
     terrain = terrain_features(_load_dem(items, area))
     return terrain.chunk().odc.reproject(geobox, resampling="nearest").chunk(_dask_chunks(chunks))
 
@@ -277,24 +282,43 @@ def load_data(geobox: GeoBox, year: int, chunks: dict | None = None) -> xr.Datas
     S2 and S1 geomads are on the dep grid (EPSG:3832), so they load onto geobox without reprojection, including
     across the antimeridian. The DEM is fetched eagerly (see load_dem_terrain); everything else is lazy.
 
+    Without an S1 item (e.g. remote islands, or years DEP hasn't published), the S1 features are NaN and
+    attrs["missing_inputs"] lists the collection. The random forest then predicts without radar, which is likely less
+    accurate: it was trained on points that all had S1.
+
     Raises:
-        NoDataError: If no S2 or no S1 item overlaps geobox for the year.
+        NoDataError: If no S2 item overlaps geobox for the year.
     """
     chunks = CHUNKS if chunks is None else chunks
     client = Client.open(DEP_CATALOG)
 
-    def load(collection: str, bands: list[str]) -> xr.Dataset:
-        items = _search(client, geobox, collections=[collection], datetime=str(year))
-        logger.info(f"Found {len(items)} {collection} items")
-        if not items:
-            raise NoDataError(f"No {collection} items for {year} over {bbox_across_180(geobox)}")
-        return stac_load(items, geobox=geobox, bands=bands, chunks=chunks).squeeze("time", drop=True)
+    def items(collection: str) -> list[Item]:
+        found = _search(client, geobox, collections=[collection], datetime=str(year))
+        logger.info(f"Found {len(found)} {collection} items")
+        return found
 
-    s2 = add_indices(scale_reflectance(load(S2_COLLECTION, S2_REFLECTANCE + S2_MAD)))
-    s1 = load(S1_COLLECTION, S1_BANDS)
+    def load(found: list[Item], bands: list[str]) -> xr.Dataset:
+        return stac_load(found, geobox=geobox, bands=bands, chunks=chunks).squeeze("time", drop=True)
+
+    s2_items = items(S2_COLLECTION)
+    if not s2_items:
+        raise NoDataError(f"No {S2_COLLECTION} items for {year} over {bbox_across_180(geobox)}")
+    s2 = add_indices(scale_reflectance(load(s2_items, S2_REFLECTANCE + S2_MAD)))
+
+    missing = []
+    s1_items = items(S1_COLLECTION)
+    if s1_items:
+        s1 = load(s1_items, S1_BANDS)
+    else:
+        logger.warning(f"No {S1_COLLECTION} items for {year}; S1 features are NaN")
+        s1 = _nan_dataset(geobox, S1_BANDS, chunks)
+        missing.append(S1_COLLECTION)
     s1["mean_vv_vh"] = safe_divide(s1.mean_vv, s1.mean_vh)
+
     dem = load_dem_terrain(geobox, chunks)
-    return xr.merge([s2, s1, dem], join="exact", compat="override")[FEATURES]
+    ds = xr.merge([s2, s1, dem], join="exact", compat="override")[FEATURES]
+    ds.attrs["missing_inputs"] = missing
+    return ds
 
 
 def sample_points(ds: xr.Dataset, points: gpd.GeoDataFrame) -> pd.DataFrame:

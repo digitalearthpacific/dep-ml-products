@@ -32,8 +32,11 @@ the STAC item is built by reading the written COGs back over HTTPS.
 
 - DEP Sentinel-2 and Sentinel-1 geomads (`dep_s2_geomad`, `dep_s1_geomad`) from https://stac.digitalearthpacific.org.
 - Copernicus DEM GLO-30 from Planetary Computer, for elevation, slope, northness and eastness.
-- **Sentinel-1 2025 isn't available yet** (`dep_s1_geomad` has 2017-2024). The model needs S1, so 2025 tasks log
-  "No data" and exit without writing. When DEP publishes it, run the workflow with `-p years=2025`.
+- **Where Sentinel-1 is missing, tiles are classified without it.** That's every tile in 2025 (`dep_s1_geomad` has
+  2017-2024 so far) and some outer islands in other years (e.g. Rotuma and parts of Lau in 2022). The S1 features are
+  NaN and the STAC item's `mrd:missing_inputs` lists `dep_s1_geomad`. Treat those outputs with caution: the model was
+  trained only on points with S1, so it's likely less accurate without it. When DEP publishes S1 for 2025, rerun with
+  `-p years=2025 -p overwrite=--overwrite`.
 - DEP's S2 geomad has no data in a band about 30 km wide around 180°, so those pixels (e.g. parts of Taveuni) are
   nodata in every year.
 
