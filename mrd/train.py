@@ -17,23 +17,21 @@ import joblib
 import numpy as np
 import pandas as pd
 import sklearn
-from dep_tools.grids import PACIFIC_GRID_10
+from dep_tools.aws import object_exists
+from dep_tools.grids import PACIFIC_GRID_10  # TODO: Validate that v0-0-1 used exactly this grid.
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
 from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold, cross_val_predict
 
-import mrd.data
 from mrd import CLASSES, MODEL_PREFIX, OUTPUT_BUCKET, VERSION, tile_index
-from mrd.aws import s3_client, s3_exists
+from mrd.aws import s3_client
 from mrd.data import FEATURES, S2_REFLECTANCE, NoDataError, load_data, sample_points
 
 logger = logging.getLogger(__name__)
 
-# Anchored to the repo root, so the notebook (run from notebooks/) and the CLI (run from anywhere) find the same files.
-ROOT = Path(__file__).resolve().parents[1]
-TRAINING_DATA = ROOT / "data" / "mred-tdata.geojson"
-CACHE_DIR = ROOT / "data" / "cache"
-MODELS_DIR = ROOT / "data" / "models"
+# Relative to the current directory: run `mrd train` from the repo root.
+TRAINING_DATA = Path("data/mred-tdata.geojson")
+MODELS_DIR = Path("data/models")
 
 CLASS_COLUMN = "lulc_code"
 # Small chunks so only the chunks containing points are read. Values don't depend on chunk size: S2 and S1 load on
@@ -50,15 +48,10 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _data_code_hash() -> str:
-    """Hash of the feature code, part of the feature cache key so a change to mrd/data.py rebuilds the cache."""
-    return _sha256(Path(mrd.data.__file__))
-
-
 def _git(*args: str) -> str | None:
-    """Output of a git command run in the repo root, or None if it fails (e.g. not a git checkout)."""
+    """Output of a git command, or None if it fails (e.g. not a git checkout)."""
     try:
-        return subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True, check=True).stdout
+        return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout
     except (OSError, subprocess.CalledProcessError):
         return None
 
@@ -79,6 +72,7 @@ def read_points(path: Path) -> tuple[gpd.GeoDataFrame, int]:
     return points, int((~has_geometry).sum())
 
 
+# TODO: Get IDs from Fiji geom, not training data.
 def tile_ids(points: gpd.GeoDataFrame) -> pd.Series:
     """The dep grid tile of each point, as "col,row"."""
     indices = (PACIFIC_GRID_10.pt2idx(x, y) for x, y in zip(points.geometry.x, points.geometry.y))
@@ -114,31 +108,6 @@ def build_table(points: gpd.GeoDataFrame, year: int) -> tuple[pd.DataFrame, int]
 def drop_unobserved(table: pd.DataFrame) -> pd.DataFrame:
     """Drop points without an S2 observation: predict makes those pixels nodata, so the model never sees them."""
     return table[table[S2_REFLECTANCE].notna().all(axis=1)]
-
-
-def load_table(
-    points: gpd.GeoDataFrame, year: int, training_data: Path, use_cache: bool
-) -> tuple[pd.DataFrame, int, bool]:
-    """The feature table (before drop_unobserved), the not-sampled count, and whether it came from the cache.
-
-    The cache key covers the year, the training data and the feature code (mrd/data.py).
-    """
-    name = f"features-{year}-{_sha256(training_data)[:12]}-{_data_code_hash()[:12]}"
-    table_path, counts_path = CACHE_DIR / f"{name}.parquet", CACHE_DIR / f"{name}.json"
-    if use_cache and table_path.exists() and counts_path.exists():
-        # File handles, not paths: pyarrow then doesn't create its own local filesystem, which fails when another
-        # copy of Arrow is loaded (e.g. GDAL from Homebrew, linked by a source-built fiona).
-        with table_path.open("rb") as f:
-            table = pd.read_parquet(f)
-        if list(table.columns) == TABLE_COLUMNS:
-            logger.info(f"Using cached features {table_path}")
-            return table, json.loads(counts_path.read_text())["not_sampled"], True
-    table, not_sampled = build_table(points, year)
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    with table_path.open("wb") as f:
-        table.to_parquet(f)
-    counts_path.write_text(json.dumps({"not_sampled": not_sampled}))
-    return table, not_sampled, False
 
 
 def _cv_metrics(table: pd.DataFrame, cv, groups: str | None) -> dict:
@@ -181,10 +150,7 @@ def fit(table: pd.DataFrame) -> RandomForestClassifier:
     return model
 
 
-def _relative_to_root(path: Path) -> str:
-    return str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path)
-
-
+# TODO: Needed? STAC processing instead?
 def build_metadata(
     model: RandomForestClassifier,
     table: pd.DataFrame,
@@ -193,7 +159,6 @@ def build_metadata(
     version: str,
     training_data: Path,
     points: dict,
-    features_cached: bool,
 ) -> dict:
     sha, status = _git("rev-parse", "HEAD"), _git("status", "--porcelain")
     return {
@@ -204,12 +169,11 @@ def build_metadata(
         "python_version": platform.python_version(),
         "sklearn_version": sklearn.__version__,
         "training_year": year,
-        "training_data": _relative_to_root(training_data),
+        "training_data": str(training_data),
         "training_data_sha256": _sha256(training_data),
         "points": points,
         "class_counts": {int(k): int(v) for k, v in table[CLASS_COLUMN].value_counts().sort_index().items()},
         "tiles": {k: int(v) for k, v in table["tile"].value_counts().sort_index().items()},
-        "features_cached": features_cached,
         "feature_names": list(model.feature_names_in_),
         "classes": {code: name for code, (name, _) in CLASSES.items()},
         "hyperparameters": HYPERPARAMETERS,
@@ -222,17 +186,9 @@ def _keys(version: str) -> dict[str, str]:
     return {name: f"{MODEL_PREFIX}/{version}/{name}" for name in ["metadata.json", "model.joblib"]}
 
 
-def _check_not_published(client, version: str) -> None:
-    existing = [key for key in _keys(version).values() if s3_exists(client, OUTPUT_BUCKET, key)]
-    if existing:
-        raise FileExistsError(f"Already published (versions are immutable; use --overwrite to replace): {existing}")
-
-
-def upload(local_dir: Path, version: str, overwrite: bool) -> None:
+def upload(local_dir: Path, version: str) -> None:
     """Upload metadata.json then model.joblib, so a model is never published without its metadata."""
     client = s3_client()
-    if not overwrite:
-        _check_not_published(client, version)
     content_types = {"metadata.json": "application/json", "model.joblib": "application/octet-stream"}
     for name, key in _keys(version).items():
         client.upload_file(str(local_dir / name), OUTPUT_BUCKET, key, ExtraArgs={"ContentType": content_types[name]})
@@ -247,17 +203,19 @@ def train(
     overwrite: bool = False,
 ) -> Path:
     """Train on all points, write model.joblib and metadata.json locally, and upload them unless upload_model is
-    False. Upload runs always rebuild the features instead of using the cache. Returns the local directory.
+    False. Returns the local directory.
+
+    Raises:
+        FileExistsError: If uploading without overwrite and the version is already published (checked first).
     """
-    training_data = Path(training_data).resolve()
-    if upload_model:
-        if not training_data.is_relative_to(ROOT):
-            raise ValueError(f"Training data must be in the repo to publish a model: {training_data}")
-        if not overwrite:
-            _check_not_published(s3_client(), version)
+    if upload_model and not overwrite:
+        client = s3_client()
+        existing = [key for key in _keys(version).values() if object_exists(OUTPUT_BUCKET, key, client)]
+        if existing:
+            raise FileExistsError(f"Already published (use --overwrite to replace): {existing}")
 
     points, null_geometry = read_points(training_data)
-    raw, not_sampled, cached = load_table(points, year, training_data, use_cache=not upload_model)
+    raw, not_sampled = build_table(points, year)
     table = drop_unobserved(raw)
     counts = {
         "input": len(points) + null_geometry,
@@ -273,7 +231,7 @@ def train(
 
     cv = cross_validate(table)
     model = fit(table)
-    metadata = build_metadata(model, table, cv, year, version, training_data, counts, cached)
+    metadata = build_metadata(model, table, cv, year, version, training_data, counts)
 
     local_dir = MODELS_DIR / version
     local_dir.mkdir(parents=True, exist_ok=True)
@@ -284,5 +242,5 @@ def train(
     logger.info(f"OOB score {metadata['oob_score']:.3f}. Wrote {local_dir}")
 
     if upload_model:
-        upload(local_dir, version, overwrite)
+        upload(local_dir, version)
     return local_dir

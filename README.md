@@ -52,7 +52,8 @@ uv run mrd train --year 2022 --no-upload   # local only: data/models/<version>/
 uv run mrd train --year 2022               # also publishes to s3://dep-public-staging/dep_s2s1_mrd/models/<version>/
 ```
 
-Publishing refuses to overwrite a version that's already published (versions are immutable). `notebooks/1-ml-learning.ipynb` explores the same steps.
+Run it from the repo root. Publishing refuses to replace a model already published for that version unless you pass
+`--overwrite`. `notebooks/1-ml-learning.ipynb` explores the same steps.
 
 ## Classify
 

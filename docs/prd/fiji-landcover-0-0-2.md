@@ -199,7 +199,6 @@ Not adopted from ldn-lulc:
 - **FR5: training.** `mrd train [--year 2022] [--version] [--training-data data/mred-tdata.geojson]`:
   - drops null-geometry points and reprojects to EPSG:3832;
   - groups points by tile; for each tile, runs `load_data(tile_geobox, year)` then `sample_points` (vectorised nearest-pixel `sel`);
-  - caches the feature table as parquet;
   - reports `StratifiedGroupKFold` CV (5 folds, groups = tile) and random stratified 5-fold CV;
   - fits `RandomForestClassifier(n_estimators=500, class_weight="balanced", oob_score=True, random_state=42)` on all points, as a DataFrame so feature names are kept;
   - uploads `model.joblib` and `metadata.json` with boto3.

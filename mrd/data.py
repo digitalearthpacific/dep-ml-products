@@ -44,12 +44,9 @@ Padding and crop               Only the DEM is padded (about 100 m), because onl
 """
 
 import logging
-import os
-import tempfile
 import warnings
+from io import BytesIO
 from math import ceil
-from pathlib import Path
-from urllib.parse import urlparse
 
 import dask.array as da
 import geopandas as gpd
@@ -342,32 +339,21 @@ def predict(model: RandomForestClassifier, ds: xr.Dataset) -> xr.Dataset:
 
 
 def load_model(url: str) -> RandomForestClassifier:
-    """Load the model from an HTTPS URL (downloaded once to ~/.cache/mrd) or a local path.
-
-    The cache is keyed by URL, which includes the version, and is never revalidated: versions are immutable, so
-    delete the cached file to pick up a model republished under the same version. s3:// URLs aren't supported; use
-    the bucket's HTTPS URL.
+    """Load the model from an HTTPS URL or a local path. s3:// URLs aren't supported; use the bucket's HTTPS URL.
 
     Raises:
         InconsistentVersionWarning: As an error, if the model was pickled with a different scikit-learn version.
         ValueError: If the model has no feature names or has class values outside CLASSES.
     """
-    path = Path(url)
+    source = url
     if url.startswith("https://"):
-        parsed = urlparse(url)
-        path = Path.home() / ".cache" / "mrd" / parsed.netloc / parsed.path.lstrip("/")
-        if not path.exists():
-            logger.info(f"Downloading model from {url} to {path}")
-            path.parent.mkdir(parents=True, exist_ok=True)
-            response = requests.get(url, timeout=120)
-            response.raise_for_status()
-            # Write then rename, so an interrupted download never leaves a truncated model in the cache.
-            with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as tmp:
-                tmp.write(response.content)
-            os.replace(tmp.name, path)
+        logger.info(f"Downloading model from {url}")
+        response = requests.get(url, timeout=120)
+        response.raise_for_status()
+        source = BytesIO(response.content)
     with warnings.catch_warnings():
         warnings.simplefilter("error", InconsistentVersionWarning)
-        model = joblib.load(path)
+        model = joblib.load(source)
     if not hasattr(model, "feature_names_in_"):
         raise ValueError("Model has no feature names. Fit it on a DataFrame with the FEATURES columns.")
     if not set(model.classes_.tolist()) <= set(CLASSES):

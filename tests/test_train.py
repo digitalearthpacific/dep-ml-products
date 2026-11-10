@@ -1,20 +1,17 @@
 """Offline checks for mrd.train: run with `pytest tests`."""
 
 import json
-from types import SimpleNamespace
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pytest
-from botocore.exceptions import ClientError
 from dep_tools.grids import PACIFIC_GRID_10
 from odc.geo.xr import assign_crs, xr_coords
 from shapely.geometry import Point
 
 import mrd.train as t
 from mrd import CLASSES
-from mrd.aws import s3_exists
 from mrd.data import FEATURES, NoDataError
 
 TILE = PACIFIC_GRID_10.tile_geobox((63, 20))
@@ -108,29 +105,6 @@ def test_drop_unobserved_keeps_s1_gaps():
     assert list(t.drop_unobserved(table).index) == [1, 2]
 
 
-def test_load_table_cache(monkeypatch, tmp_path):
-    data = tmp_path / "points.geojson"
-    data.write_text("{}")
-    built = []
-
-    def build_table(points, year):
-        built.append(year)
-        return pd.DataFrame(0.5, index=[0], columns=t.TABLE_COLUMNS).assign(tile="63,20"), 3
-
-    monkeypatch.setattr(t, "CACHE_DIR", tmp_path / "cache")
-    monkeypatch.setattr(t, "build_table", build_table)
-    assert t.load_table(None, 2022, data, use_cache=True)[1:] == (3, False)
-    assert t.load_table(None, 2022, data, use_cache=True)[1:] == (3, True)
-    assert t.load_table(None, 2022, data, use_cache=False)[2] is False
-    monkeypatch.setattr(t, "_data_code_hash", lambda: "changed")
-    assert t.load_table(None, 2022, data, use_cache=True)[2] is False
-    assert len(built) == 3
-    # A cache with other columns is rebuilt.
-    cached = next((tmp_path / "cache").glob(f"*{'changed'[:12]}.parquet"))
-    pd.DataFrame({"a": [1]}).to_parquet(cached)
-    assert t.load_table(None, 2022, data, use_cache=True)[2] is False
-
-
 def _table(n_per_class: int = 12, n_tiles: int = 6) -> pd.DataFrame:
     rng = np.random.default_rng(0)
     codes = np.repeat([1, 2, 3], n_per_class)
@@ -169,7 +143,7 @@ def test_fit_and_metadata(tmp_path):
     data.write_text("{}")
     points = {"input": 40, "null_geometry": 1, "not_sampled": 2, "no_s2": 1, "used": len(table)}
     metadata = json.loads(
-        json.dumps(t.build_metadata(model, table, t.cross_validate(table), 2022, "0-0-2", data, points, False))
+        json.dumps(t.build_metadata(model, table, t.cross_validate(table), 2022, "0-0-2", data, points))
     )
     for key in [
         "sklearn_version",
@@ -187,7 +161,7 @@ def test_fit_and_metadata(tmp_path):
     ]:
         assert key in metadata, key
     assert metadata["points"]["input"] == sum(v for k, v in points.items() if k != "input")
-    assert metadata["training_data"] == str(data)  # outside the repo: absolute
+    assert metadata["training_data"] == str(data)
     assert metadata["hyperparameters"] == t.HYPERPARAMETERS and "n_jobs" not in metadata["hyperparameters"]
     assert metadata["classes"] == {str(code): name for code, (name, _) in CLASSES.items()}
 
@@ -196,54 +170,32 @@ def test_train_requires_every_class(monkeypatch, tmp_path):
     data = tmp_path / "points.geojson"
     data.write_text("{}")
     monkeypatch.setattr(t, "read_points", lambda path: (_points([(0, 0)], [1]), 0))
-    monkeypatch.setattr(t, "load_table", lambda *args, **kwargs: (_table(), 0, False))
+    monkeypatch.setattr(t, "build_table", lambda points, year: (_table(), 0))
     with pytest.raises(ValueError, match="No training points left for classes"):
         t.train(training_data=data, upload_model=False)
 
 
-def _client_error(code: str) -> ClientError:
-    return ClientError({"Error": {"Code": code}}, "HeadObject")
-
-
-def test_s3_exists():
-    def client(error=None):
-        def head_object(**kwargs):
-            if error:
-                raise _client_error(error)
-
-        return SimpleNamespace(head_object=head_object)
-
-    assert s3_exists(client(), "b", "k") is True
-    assert s3_exists(client("404"), "b", "k") is False
-    with pytest.raises(ClientError):
-        s3_exists(client("403"), "b", "k")
-
-
 class _StubS3:
-    def __init__(self, existing=()):
-        self.existing, self.uploads = set(existing), []
-
-    def head_object(self, Bucket, Key):
-        if Key not in self.existing:
-            raise _client_error("404")
+    def __init__(self):
+        self.uploads = []
 
     def upload_file(self, filename, bucket, key, ExtraArgs):
         self.uploads.append((key, ExtraArgs["ContentType"]))
 
 
 def test_upload(monkeypatch, tmp_path):
-    stub = _StubS3(existing={"dep_s2s1_mrd/models/0-0-2/model.joblib"})
+    stub = _StubS3()
     monkeypatch.setattr(t, "s3_client", lambda: stub)
-    with pytest.raises(FileExistsError):
-        t.upload(tmp_path, "0-0-2", overwrite=False)
-    assert stub.uploads == []
-    t.upload(tmp_path, "0-0-2", overwrite=True)
+    t.upload(tmp_path, "0-0-2")
     assert stub.uploads == [
         ("dep_s2s1_mrd/models/0-0-2/metadata.json", "application/json"),
         ("dep_s2s1_mrd/models/0-0-2/model.joblib", "application/octet-stream"),
     ]
 
 
-def test_upload_run_refuses_data_outside_repo(tmp_path):
-    with pytest.raises(ValueError, match="must be in the repo"):
-        t.train(training_data=tmp_path / "points.geojson", upload_model=True)
+def test_train_refuses_published_version(monkeypatch):
+    monkeypatch.setattr(t, "s3_client", lambda: "client")
+    monkeypatch.setattr(t, "object_exists", lambda bucket, key, client: key.endswith("model.joblib"))
+    monkeypatch.setattr(t, "read_points", lambda path: pytest.fail("trained before checking"))
+    with pytest.raises(FileExistsError, match="--overwrite"):
+        t.train(upload_model=True, overwrite=False)
