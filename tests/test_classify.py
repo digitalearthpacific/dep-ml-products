@@ -181,3 +181,11 @@ def test_cli(monkeypatch):
     monkeypatch.setattr(c, "run", fail)
     result = runner.invoke(app, ["run", "--tile-id", "65,21", "--year", "2022"])
     assert result.exit_code != 0 and isinstance(result.exception, RuntimeError)
+
+
+def test_versions_match():
+    from pathlib import Path
+
+    assert VERSION == model_url(VERSION).split("/")[-2]
+    workflow = Path(__file__).parents[1] / "workflow" / "ml-mrd-annual.yaml"
+    assert f'value: "{VERSION}"' in workflow.read_text(), "the workflow's version must match pyproject.toml's"

@@ -1,5 +1,5 @@
 # MRD (Mineral Resource Detection) land-cover classification: one pod per dep grid tile and year.
-# Submit: argo submit workflow/ml-mrd-annual.yaml -p image-tag=<tag> [-p years=2022]
+# Submit: argo submit workflow/ml-mrd-annual.yaml [-p years=2022]
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
@@ -23,13 +23,11 @@ spec:
   arguments:
     parameters:
       - name: version
-        value: "0-0-2" # Output version; mrd run loads the model published for it
+        value: "0-0-2" # pyproject.toml's version with dashes: the image tag, output version and model version
       - name: years
         value: "2017-2024" # "2022", "2017-2024" or "2017,2020". S1 geomad has no 2025 yet.
       - name: image-name
         value: "dep-ml-products"
-      - name: image-tag
-        value: "set-at-submit" # Required: -p image-tag=<tag>. Left unset, pods fail with ErrImagePull.
       - name: output-bucket
         value: "dep-public-staging"
       - name: overwrite
@@ -53,7 +51,7 @@ spec:
 
     - name: generate
       container:
-        image: "ghcr.io/digitalearthpacific/{{workflow.parameters.image-name}}:{{workflow.parameters.image-tag}}"
+        image: "ghcr.io/digitalearthpacific/{{workflow.parameters.image-name}}:{{workflow.parameters.version}}"
         imagePullPolicy: IfNotPresent
         resources:
           requests:
@@ -80,7 +78,7 @@ spec:
         limit: "2"
         retryPolicy: OnError
       container:
-        image: "ghcr.io/digitalearthpacific/{{workflow.parameters.image-name}}:{{workflow.parameters.image-tag}}"
+        image: "ghcr.io/digitalearthpacific/{{workflow.parameters.image-name}}:{{workflow.parameters.version}}"
         imagePullPolicy: IfNotPresent
         # Unmeasured estimate (~20-24 GB in use at 8 threads): re-set from a measured single-tile run (NFR3).
         resources:
@@ -102,7 +100,7 @@ spec:
           - --output-bucket
           - "{{workflow.parameters.output-bucket}}"
           - --image-tag
-          - "{{workflow.parameters.image-tag}}"
+          - "{{workflow.parameters.version}}"
           - --threads
           - "8"
           - "{{workflow.parameters.overwrite}}"

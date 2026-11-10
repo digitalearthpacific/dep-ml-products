@@ -75,20 +75,22 @@ uv run mrd print-tasks --years 2017-2024 --overwrite   # the task list the workf
 ## Run the workflow
 
 ```bash
-argo submit workflow/ml-mrd-annual.yaml -p image-tag=<tag>                          # Fiji, 2017-2024
-argo submit workflow/ml-mrd-annual.yaml -p image-tag=<tag> -p years=2022            # one year
+argo submit workflow/ml-mrd-annual.yaml                          # Fiji, 2017-2024
+argo submit workflow/ml-mrd-annual.yaml -p years=2022            # one year
 ```
 
-- `image-tag` is required. Left unset, pods fail with `ErrImagePull`.
-- CI publishes images only for `main`, `aws` and releases, so a tag must come from one of those.
+- Pods run the image tagged with the workflow's `version` (e.g. `ghcr.io/digitalearthpacific/dep-ml-products:0-0-2`).
+  CI pushes that tag (plus `git describe` and `latest` tags) for `main`, `aws` and releases, so merge or release
+  before running. The `version` tag is rebuilt on every push there; the `git describe` tag pins an exact build.
 - The model for `version` must be published first (`mrd train`); otherwise each task fails loading it.
 - Fiji for 8 years is 216 tasks (27 tiles).
 - Pod resources (32Gi, 8 CPU) are an unmeasured estimate. Re-set them from a measured single-tile run.
 
 ## Versions
 
-The product and model version is `VERSION` in `mrd/__init__.py`. Change it together with the workflow's `version`
-parameter, then train and publish a model for it.
+The version is `version` in `pyproject.toml` (`0.0.2`). With dashes (`0-0-2`) it is `mrd.VERSION`, the S3 output and
+model folders, and the Docker image tag. To release a new version, bump it in `pyproject.toml` and the workflow's
+`version` parameter together (a test checks they match), then train and publish a model for it.
 
 ## Docker
 

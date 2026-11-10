@@ -3,8 +3,11 @@
 MRD is Mineral Resource Detection: land-cover maps for finding and monitoring mineral resources such as quarries.
 """
 
-# The one place the product version is set. CLIs default to it; the Argo workflow passes it as a parameter.
-VERSION = "0-0-2"
+from importlib.metadata import version as _package_version
+
+# The product, model and image version: pyproject.toml's version with dashes (0.0.2 -> 0-0-2), as used in S3 paths and
+# image tags. CLIs default to it; the Argo workflow passes it as a parameter.
+VERSION = _package_version("dep-ml-products").replace(".", "-")
 
 OUTPUT_BUCKET = "dep-public-staging"
 MODEL_PREFIX = "dep_s2s1_mrd/models"

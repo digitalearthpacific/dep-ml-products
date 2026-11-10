@@ -81,17 +81,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get version number for tagging the image
+      - name: Get version numbers for tagging the image
         id: get_version
         run: |
           git fetch --all --tags
-          echo "VERSION=$(git describe --tags)" >> $GITHUB_OUTPUT
+          echo "DESCRIBE=$(git describe --tags)" >> $GITHUB_OUTPUT
+          # pyproject.toml's version with dashes (0.0.2 -> 0-0-2), the tag the Argo workflow runs for that version.
+          echo "VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"].replace(".", "-"))')" >> $GITHUB_OUTPUT
 
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.get_version.outputs.VERSION }},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.get_version.outputs.DESCRIBE }},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.get_version.outputs.VERSION }},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
