@@ -318,14 +318,14 @@ All tasks are done on the `productionise` branch, which branches off `will-run`.
 **Depends on:** T1
 **In scope:**
 - `mrd/train.py`, plus `mrd train` in `mrd/cli.py` (FR5, FR6).
-- Move `notebooks/mred-tdata.geojson` to `data/mred-tdata.geojson`.
+- Training data is private: not in this public repo. `make training-data` downloads it to `data/mred-tdata.geojson` (git-ignored) from nicholasmetherall/minerals-model; the README states this limitation.
 - Train with 2022 imagery and upload `model.joblib` and `metadata.json` to `models/0-0-2/`.
 - Make `notebooks/1-ml-learning.ipynb` a thin caller.
 **Out of scope:**
 - Hyperparameter search.
 - Other training years.
 - New labels.
-**Surfaces touched:** `mrd/train.py`, `mrd/cli.py`, `mrd/__init__.py`, `tests/test_train.py`, `pyproject.toml`, `uv.lock`, `data/mred-tdata.geojson`, `notebooks/1-ml-learning.ipynb`
+**Surfaces touched:** `mrd/train.py`, `mrd/cli.py`, `mrd/__init__.py`, `tests/test_train.py`, `pyproject.toml`, `uv.lock`, `Makefile`, `README.md`, `notebooks/1-ml-learning.ipynb`
 **Interfaces:** `mrd train --year 2022 --version 0-0-2` writes `s3://dep-public-staging/dep_s2s1_mrd/models/0-0-2/{model.joblib,metadata.json}`.
 **Verification:**
 - AC1 and AC2.

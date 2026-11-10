@@ -45,7 +45,13 @@ uv sync
 
 ## Train
 
-The model is trained once, by hand, on `data/mred-tdata.geojson` (2022 labels and imagery):
+The model is trained once, by hand, on `data/mred-tdata.geojson` (2022 labels and imagery).
+
+**Limitation: the training data isn't in this repository.** The labelled points are kept out of this public repo.
+They live in [nicholasmetherall/minerals-model](https://github.com/nicholasmetherall/minerals-model), so you need
+access to that repo to train. `make training-data` downloads them to `data/` (git-ignored); set `GITHUB_TOKEN` if the
+repo is private. Classifying with a published model doesn't need them.
+
 
 ```bash
 uv run mrd train --year 2022 --no-upload   # local only: data/models/<version>/
