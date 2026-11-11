@@ -1,0 +1,106 @@
+# MRD (Mineral Resource Detection) land-cover classification: one pod per dep grid tile and year.
+# Submit: argo submit workflow/ml-mrd-annual.yaml [-p years=2022]
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: dep-ml-mrd-
+  namespace: argo
+spec:
+  entrypoint: workflow-entrypoint
+  serviceAccountName: public-bucket-writer
+  podGC:
+    strategy: OnWorkflowSuccess
+    deleteDelayDuration: 600s
+  parallelism: 20
+  tolerations:
+    - key: digitalearthpacific.org/node-purpose
+      operator: Equal
+      value: argo
+      effect: NoSchedule
+  workflowMetadata:
+    labels:
+      app: ml-mrd
+  arguments:
+    parameters:
+      - name: version
+        value: "0-0-2" # pyproject.toml's version with dashes: the image tag, output version and model version
+      - name: years
+        value: "2017-2024" # "2022", "2017-2024" or "2017,2020". S1 geomad has no 2025 yet.
+      - name: image-name
+        value: "dep-ml-products"
+      - name: output-bucket
+        value: "dep-public-staging"
+      - name: overwrite
+        value: "--no-overwrite" # Or "--overwrite"
+  templates:
+    - name: workflow-entrypoint
+      dag:
+        tasks:
+          - name: generate-ids
+            template: generate
+          - name: process-id
+            depends: generate-ids.Succeeded
+            template: process
+            arguments:
+              parameters:
+                - name: tile-id
+                  value: "{{item.tile-id}}"
+                - name: year
+                  value: "{{item.year}}"
+            withParam: "{{tasks.generate-ids.outputs.result}}"
+
+    - name: generate
+      container:
+        image: "ghcr.io/digitalearthpacific/{{workflow.parameters.image-name}}:{{workflow.parameters.version}}"
+        imagePullPolicy: IfNotPresent
+        resources:
+          requests:
+            memory: 1Gi
+            cpu: "1"
+        command: [mrd]
+        args:
+          - print-tasks
+          - --years
+          - "{{workflow.parameters.years}}"
+          - --version
+          - "{{workflow.parameters.version}}"
+          - --output-bucket
+          - "{{workflow.parameters.output-bucket}}"
+          - "{{workflow.parameters.overwrite}}"
+
+    - name: process
+      inputs:
+        parameters:
+          - name: tile-id
+          - name: year
+      # Retry pod and node errors only, not out-of-memory kills or code errors (the memory figure is unmeasured).
+      retryStrategy:
+        limit: "2"
+        retryPolicy: OnError
+      container:
+        image: "ghcr.io/digitalearthpacific/{{workflow.parameters.image-name}}:{{workflow.parameters.version}}"
+        imagePullPolicy: IfNotPresent
+        # Unmeasured estimate (~20-24 GB in use at 8 threads): re-set from a measured single-tile run (NFR3).
+        resources:
+          requests:
+            memory: 32Gi
+            cpu: "8"
+          limits:
+            memory: 48Gi
+            cpu: "8"
+        command: [mrd]
+        args:
+          - run
+          - --tile-id
+          - "{{inputs.parameters.tile-id}}"
+          - --year
+          - "{{inputs.parameters.year}}"
+          - --version
+          - "{{workflow.parameters.version}}"
+          - --output-bucket
+          - "{{workflow.parameters.output-bucket}}"
+          - --image-tag
+          - "{{workflow.parameters.version}}"
+          - --threads
+          - "8"
+          - "{{workflow.parameters.overwrite}}"

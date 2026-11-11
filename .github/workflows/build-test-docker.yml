@@ -9,10 +9,12 @@ on:
   push:
     branches:
       - main
-      - aws
   release:
     types:
-      - created
+      - published
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -20,24 +22,29 @@ jobs:
     steps:
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
-      - name: Check formatting
-        uses: rickstaa/action-black@v1
-        id: action_black
+      - name: Lint
+        uses: astral-sh/ruff-action@4919ec5cf1f49eff0871dbcea0da843445b837e6 # v3
         with:
-          black_args: "--check src"
+          version: "0.15.22"
+          args: "check"
+          src: "mrd tests"
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Check formatting
+        uses: astral-sh/ruff-action@4919ec5cf1f49eff0871dbcea0da843445b837e6 # v3
+        with:
+          version: "0.15.22"
+          args: "format --check"
+          src: "mrd tests"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: .
           push: false
@@ -50,40 +57,41 @@ jobs:
     #       docker run --rm ${{ env.IMAGE_NAME }} bash -c "pip install -e /code; pip install -r /code/requirements-test.txt; pytest /code"
 
   push:
-    permissions: write-all
-    if: github.ref == 'refs/heads/main' || github.event_name == 'release' || github.ref == 'refs/heads/aws'
+    permissions:
+      contents: read
+      packages: write
+    if: github.ref == 'refs/heads/main' || github.event_name == 'release'
     needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
         
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Log in to the Container registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc # v2
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get version number for tagging the image
+      - name: Get version numbers for tagging the image
         id: get_version
         run: |
           git fetch --all --tags
-          echo "VERSION=$(git describe --tags)" >> $GITHUB_OUTPUT
+          echo "DESCRIBE=$(git describe --tags)" >> $GITHUB_OUTPUT
+          # pyproject.toml's version with dashes (0.0.2 -> 0-0-2), the tag the Argo workflow runs for that version.
+          echo "VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"].replace(".", "-"))')" >> $GITHUB_OUTPUT
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: .
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.get_version.outputs.VERSION }},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.get_version.outputs.DESCRIBE }},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.get_version.outputs.VERSION }},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
