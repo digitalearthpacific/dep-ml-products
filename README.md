@@ -129,8 +129,35 @@ https://www.lands.gov.fj/
 
 - Add a new release 0.0.2. This will trigger the image build/push workflow.
 - Update STAC collection. Should this be for staging and prod? https://github.com/digitalearthpacific/dep-stac/blob/main/dep_collections/dep_s2s1_mrd.py
-- write a STAC-Geoparquet? link from collection. Maybe not needed.
+https://github.com/digitalearthpacific/dep-stac/pull/26
+- ~~write a STAC-Geoparquet? link from collection.~~
 - Run on prod DEP?
 - Index to pgstac for dep-stac.
 - https://github.com/digitalearthpacific/dep-flux/blob/main/workflows/base/templates/stac-collection-sync.yaml
 - https://github.com/digitalearthpacific/dep-flux/blob/main/workflows/base/templates/stac-items-ingest.yaml
+
+Add WMS? Other collections have a WMS url
+- DEP-STAC: add WMS_URL to collection
+- DEP-flux: apps/base/odc: 
+- Pacific cube in a box: need to update the product definition. Style already [defined](https://github.com/digitalearthpacific/pacific-cube-in-a-box/blob/dc839525e1048236d41d0ffc501302ece75d360d/ows/ows_config/land_cover/ows_landcover.py#L74). 
+- Product definition doesn't match 0-0-2:
+
+|       | dep_s2s1_mrd.odc-product.yaml | 0-0-2 writes            |
+|-------|-------------------------------|-------------------------|
+| class | int8, nodata 0                | uint8, nodata 255       |
+| proba | float32, nodata NaN           | uint8 0–100, nodata 255 |
+  style_colours also shows value 0 as grey nodata, but 0-0-2's nodata is 255.
+https://github.com/digitalearthpacific/pacific-cube-in-a-box
+
+
+To make MRD viewable over WMS:
+1. In pacific-cube-in-a-box:
+   - Update the product definition's class and proba to uint8 with nodata 255.
+   - Fix the nodata entry in style_colours.
+   - Write the layer abstract.
+   - Uncomment the Land Cover block in pacific_ows.py.
+2. Re-index: rebuild and redeploy the datacube-ows image, and re-index dep_s2s1_mrd into the ODC database.
+3. In dep-stac: add the wms link to the collection, with wms:layers: ["dep_s2s1_mrd"] and wms:styles: ["style_colours", "proba"].
+
+Open decision: one datacube product can only have one data type per band. If 0-0-1 outputs (written as float32) are already indexed under dep_s2s1_mrd, changing the product to uint8 conflicts with them. You'd need to drop or re-index 0-0-1, or give 0-0-2 a separate product.
+
