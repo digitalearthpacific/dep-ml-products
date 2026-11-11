@@ -65,3 +65,21 @@ def run(
     except Exception:
         logging.getLogger("mrd").exception(f"Failed to classify {tile_id} {year}")
         raise
+
+
+@app.command()
+def index_stac_geoparquet(
+    bucket: str = typer.Option(OUTPUT_BUCKET),
+    version: str = typer.Option(VERSION, help="Output version whose STAC items are indexed."),
+    upload: bool = typer.Option(True, help="Upload the generated STAC-Geoparquet file."),
+    overwrite: bool = typer.Option(False, help="Overwrite existing STAC-Geoparquet index."),
+) -> None:
+    """Index STAC items into a Geoparquet file."""
+    from mrd.stac_geoparquet import index_to_stac_geoparquet
+
+    index_to_stac_geoparquet(
+        bucket=bucket,
+        version=version,
+        upload=upload,
+        overwrite=overwrite,
+    )

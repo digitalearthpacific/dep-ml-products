@@ -21,6 +21,7 @@ dependencies = [
     "pystac-client>=0.9.1,<0.10",
     "rasterio>=1.5.2,<2",
     "requests>=2.34.2,<3",
+    "rustac>=0.9.19",
     # Pinned: models are pickled, so model training and classification must be upgraded together.
     "scikit-learn==1.9.1",
     "scipy>=1.18.1,<2",

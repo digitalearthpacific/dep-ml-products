@@ -3,12 +3,16 @@ IMAGE = dep-ml-products
 # The training data isn't in this repo (see README). Set GITHUB_TOKEN if the source repo is private.
 TRAINING_DATA_URL = https://raw.githubusercontent.com/nicholasmetherall/minerals-model/refs/heads/main/training_data/mred-tdata.geojson
 
+build:
+	docker build --platform linux/amd64 --tag $(IMAGE) .
+
 training-data:
 	mkdir -p data
 	curl -fsSL $(if $(GITHUB_TOKEN),-H "Authorization: Bearer $(GITHUB_TOKEN)") -o data/mred-tdata.geojson $(TRAINING_DATA_URL)
 
-build:
-	docker build --platform linux/amd64 --tag $(IMAGE) .
+# Prerequisites the training data
+train: data/mred-tdata.geojson
+	uv run mrd train --year 2022
 
 print-tasks:
 	uv run mrd print-tasks --years 2022
@@ -34,9 +38,8 @@ run-all:
 	done; \
 	if [ -f run-all-failures.txt ]; then cat run-all-failures.txt; fi
 
-# Prerequisites the training data
-train: data/mred-tdata.geojson
-	uv run mrd train --year 2022
+index-stac-geoparquet:
+	uv run mrd index-stac-geoparquet
 
 test:
 	uv run pytest tests -q
